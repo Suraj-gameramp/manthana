@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "ActionOutcome": {
+      "description": "Outcome recorded in the action audit log when an action is evaluated.",
+      "enum": [
+        "fired",
+        "suppressed",
+        "failed"
+      ],
+      "title": "ActionOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One evaluated action \u2014 the audit log seam.\n\nLogged for every fire AND every suppression (cooldown/consent/k-anonymity/\nthreshold) so actions are correctable rather than authoritative.",
+  "properties": {
+    "action_id": {
+      "title": "Action Id",
+      "type": "string"
+    },
+    "actor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Subject the action acted for/on",
+      "title": "Actor"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    },
+    "fired_at": {
+      "format": "date-time",
+      "title": "Fired At",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ActionOutcome"
+    },
+    "trigger_condition": {
+      "description": "Human-readable trigger that matched",
+      "title": "Trigger Condition",
+      "type": "string"
+    },
+    "useful": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Feedback (useful/not-useful); UI deferred to v1.5",
+      "title": "Useful"
+    }
+  },
+  "required": [
+    "id",
+    "action_id",
+    "fired_at",
+    "trigger_condition",
+    "outcome"
+  ],
+  "title": "ActionAuditEntry",
+  "type": "object"
+}

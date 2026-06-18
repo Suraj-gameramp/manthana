@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "ActionActor": {
+      "description": "Who performs an action.",
+      "enum": [
+        "engineer",
+        "org"
+      ],
+      "title": "ActionActor",
+      "type": "string"
+    },
+    "ActionShape": {
+      "description": "What shape an action takes (actions catalog).",
+      "enum": [
+        "read",
+        "write",
+        "warn",
+        "notify"
+      ],
+      "title": "ActionShape",
+      "type": "string"
+    },
+    "ConsentClass": {
+      "description": "Consent class an action requires (actions catalog).",
+      "enum": [
+        "silent",
+        "opt_out",
+        "opt_in",
+        "per_action"
+      ],
+      "title": "ConsentClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Definition of a Manthana action type (the registry/catalog entry).",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/ActionActor"
+    },
+    "confidence_threshold": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Minimum measured signal to fire (e.g. cosine similarity)",
+      "title": "Confidence Threshold"
+    },
+    "consent_class": {
+      "$ref": "#/$defs/ConsentClass"
+    },
+    "cooldown_seconds": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Min seconds between fires for the same trigger",
+      "title": "Cooldown Seconds"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "id": {
+      "description": "Stable action id, e.g. 'auto_tag_sessions'",
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "shape": {
+      "$ref": "#/$defs/ActionShape"
+    },
+    "version": {
+      "default": "0.1.0",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "shape",
+    "actor",
+    "consent_class"
+  ],
+  "title": "Action",
+  "type": "object"
+}

@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "QueueStatus": {
+      "description": "Status of a server-side pending action awaiting human approval.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "title": "QueueStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Server-side pending action awaiting human approval \u2014 the queue seam.\n\nEmpty in v1; populated by org-mutating actions (auto-drafted skills, opened\nissues, routing changes) in v1.5+.",
+  "properties": {
+    "action_id": {
+      "title": "Action Id",
+      "type": "string"
+    },
+    "approved_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved By"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "resolved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolved At"
+    },
+    "status": {
+      "$ref": "#/$defs/QueueStatus",
+      "default": "pending"
+    },
+    "team_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Team Id"
+    }
+  },
+  "required": [
+    "id",
+    "action_id",
+    "created_at"
+  ],
+  "title": "ActionQueueItem",
+  "type": "object"
+}

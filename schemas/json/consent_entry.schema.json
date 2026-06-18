@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "ConsentState": {
+      "description": "Per-subject consent state in the consent registry.",
+      "enum": [
+        "opt_in",
+        "opt_out",
+        "default"
+      ],
+      "title": "ConsentState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One consent decision by a subject for an action category.",
+  "properties": {
+    "action_category": {
+      "description": "Action id or category",
+      "title": "Action Category",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "scope": {
+      "default": "engineer",
+      "description": "engineer | org",
+      "title": "Scope",
+      "type": "string"
+    },
+    "set_at": {
+      "format": "date-time",
+      "title": "Set At",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/ConsentState",
+      "default": "default"
+    },
+    "subject": {
+      "description": "Actor id (engineer) or 'org' / 'admin:<id>'",
+      "title": "Subject",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "subject",
+    "action_category",
+    "set_at"
+  ],
+  "title": "ConsentEntry",
+  "type": "object"
+}

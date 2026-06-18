@@ -1,0 +1,18 @@
+Manthana is dual-licensed by component.
+
+  * Server  (server/  — distribution `manthana-server`):
+        GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
+        Full text: LICENSES/AGPL-3.0.txt
+
+  * Everything else (schemas/, agent/, collectors/ — distributions
+    `manthana-schemas`, `manthana`, `manthana-collectors`):
+        Apache License 2.0.
+        Full text: LICENSES/Apache-2.0.txt
+
+Rationale (from the spec): AGPL on the server prevents a SaaS competitor from
+re-hosting it without contributing back; Apache-2.0 on the client tooling keeps
+collectors, the agent, SDKs, and schemas embeddable.
+
+Portions of Manthana are derived from ECC (MIT, (c) 2026 Affaan Mustafa). See
+the NOTICE file for the component-by-component attribution and
+LICENSES/MIT-ECC.txt for the full ECC license.

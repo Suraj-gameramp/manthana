@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "FrictionCategory": {
+      "description": "Categories of friction surfaced by the compactor / failure miner.",
+      "enum": [
+        "loop",
+        "tool_error",
+        "abandon",
+        "retry",
+        "deadend"
+      ],
+      "title": "FrictionCategory",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One friction event, evidenced by specific turns.",
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/FrictionCategory"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "turn_refs": {
+      "description": "Turn ids that evidence this friction",
+      "items": {
+        "type": "string"
+      },
+      "title": "Turn Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "category",
+    "description"
+  ],
+  "title": "FrictionPoint",
+  "type": "object"
+}

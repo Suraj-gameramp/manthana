@@ -1,0 +1,41 @@
+Manthana
+Copyright 2026 The Manthana Authors
+
+This product includes software derived from ECC
+(https://github.com/affaan-m/ecc), Copyright (c) 2026 Affaan Mustafa, licensed
+under the MIT License. The full ECC MIT license is reproduced in
+LICENSES/MIT-ECC.txt.
+
+Components and literals derived from ECC
+--------------------------------------------------------------------------------
+
+Re-expressed in Python (pattern reuse; no verbatim copy):
+
+  * Data-home resolution (MANTHANA_DATA_HOME) — re-expressed from
+    scripts/lib/agent-data-home.js into
+    agent/src/manthana/agent/datahome.py.
+
+  * Collector / adapter-registry pattern — re-expressed from
+    scripts/lib/session-adapters/{registry,canonical-session,claude-history}.js
+    into collectors/src/manthana/collectors/base.py.
+
+  * State-store entity definitions — schemas/state-store.schema.json is the
+    starting point that Manthana's schema package (schemas/src/manthana/schemas/)
+    extends with the Turn / Session / Compaction entities.
+
+Copied verbatim (with a per-file attribution comment at the copy site):
+
+  * Secret / approval-command / sensitive-path detection literals
+    (SECRET_PATTERNS, APPROVAL_COMMANDS, SENSITIVE_PATHS) — copied from
+    scripts/hooks/governance-capture.js. [lands in Phase 3 — redaction]
+
+  * Model cost RATE_TABLE and transcript token-summation logic — copied from
+    scripts/hooks/cost-tracker.js. [lands in Phase 4 — compactor/cost]
+
+  * State-store layer pattern (SQLite local + Postgres server) — re-expressed
+    from scripts/lib/state-store/{schema,migrations,queries,index}.js.
+    [lands in Phase 1 — local store]
+
+Entries marked "[lands in Phase N]" are planned imports tracked here so the
+attribution exists before the code does; each will carry its own per-file
+attribution comment when written.

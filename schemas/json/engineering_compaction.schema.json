@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "FrictionCategory": {
+      "description": "Categories of friction surfaced by the compactor / failure miner.",
+      "enum": [
+        "loop",
+        "tool_error",
+        "abandon",
+        "retry",
+        "deadend"
+      ],
+      "title": "FrictionCategory",
+      "type": "string"
+    },
+    "FrictionPoint": {
+      "additionalProperties": false,
+      "description": "One friction event, evidenced by specific turns.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/FrictionCategory"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "turn_refs": {
+          "description": "Turn ids that evidence this friction",
+          "items": {
+            "type": "string"
+          },
+          "title": "Turn Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category",
+        "description"
+      ],
+      "title": "FrictionPoint",
+      "type": "object"
+    },
+    "Outcome": {
+      "description": "Terminal outcome of a session/compaction.",
+      "enum": [
+        "success",
+        "partial",
+        "abandoned"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "Surface": {
+      "description": "The tool surface a session was captured from.",
+      "enum": [
+        "claude_code",
+        "codex",
+        "cursor"
+      ],
+      "title": "Surface",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Engineering-role compaction (v1).",
+  "properties": {
+    "action_triggers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Action Triggers",
+      "type": "array"
+    },
+    "actor": {
+      "title": "Actor",
+      "type": "string"
+    },
+    "approach": {
+      "description": "How they went about it",
+      "title": "Approach",
+      "type": "string"
+    },
+    "artifacts": {
+      "description": "Things produced",
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    },
+    "dead_end_branches": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Dead End Branches",
+      "type": "array"
+    },
+    "duration_seconds": {
+      "title": "Duration Seconds",
+      "type": "number"
+    },
+    "ended_at": {
+      "format": "date-time",
+      "title": "Ended At",
+      "type": "string"
+    },
+    "est_cost_usd": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Est Cost Usd"
+    },
+    "files_touched": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Files Touched",
+      "type": "array"
+    },
+    "frameworks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Frameworks",
+      "type": "array"
+    },
+    "friction_points": {
+      "items": {
+        "$ref": "#/$defs/FrictionPoint"
+      },
+      "title": "Friction Points",
+      "type": "array"
+    },
+    "id": {
+      "description": "Stable compaction id",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "const": "engineering",
+      "default": "engineering",
+      "title": "Kind",
+      "type": "string"
+    },
+    "languages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Languages",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "project": {
+      "title": "Project",
+      "type": "string"
+    },
+    "prompt_version": {
+      "default": "v0",
+      "description": "Compaction prompt template version",
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "prs_opened": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Prs Opened",
+      "type": "array"
+    },
+    "released": {
+      "default": false,
+      "title": "Released",
+      "type": "boolean"
+    },
+    "released_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Released At"
+    },
+    "reusable_pattern": {
+      "default": false,
+      "title": "Reusable Pattern",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "surface": {
+      "$ref": "#/$defs/Surface"
+    },
+    "task_intent": {
+      "description": "What the engineer set out to do",
+      "title": "Task Intent",
+      "type": "string"
+    },
+    "tests_added": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tests Added",
+      "type": "array"
+    },
+    "tier_used": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dominant model tier",
+      "title": "Tier Used"
+    }
+  },
+  "required": [
+    "id",
+    "session_id",
+    "actor",
+    "surface",
+    "project",
+    "started_at",
+    "ended_at",
+    "duration_seconds",
+    "task_intent",
+    "approach",
+    "outcome"
+  ],
+  "title": "EngineeringCompaction",
+  "type": "object"
+}

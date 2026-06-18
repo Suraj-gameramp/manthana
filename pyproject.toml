@@ -1,0 +1,46 @@
+# Manthana monorepo workspace root.
+# This project is NOT published; it groups the workspace members and holds the
+# shared dev tooling + lint/type/test configuration.
+
+[project]
+name = "manthana-workspace"
+version = "0.0.0"
+description = "Manthana monorepo workspace (not published)."
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = ["schemas", "collectors", "agent", "server"]
+
+[tool.uv.sources]
+manthana-schemas = { workspace = true }
+manthana-collectors = { workspace = true }
+manthana = { workspace = true }
+manthana-server = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["spec", "LICENSES"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+include = ["schemas/src", "agent/src", "collectors/src", "server/src", "tests"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"

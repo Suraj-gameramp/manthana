@@ -1,0 +1,14 @@
+[project]
+name = "manthana-server"
+version = "0.1.0"
+description = "Manthana org server — ingestion, multi-tenancy, k-anonymity, founder query (AGPL-3.0)."
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+dependencies = ["manthana-schemas"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/manthana"]

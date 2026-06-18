@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --all-packages
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type-check (pyright)
+        run: uv run pyright
+
+      # decisions doc: CI runs lint + type-check + the personal-mode invariant
+      # on every PR; the schema-mirror guard rides along. Broader test gates
+      # land in v1.1.
+      - name: Tests (personal-mode invariant + schema mirror)
+        run: uv run pytest

@@ -1,0 +1,230 @@
+{
+  "$defs": {
+    "Role": {
+      "description": "Role of a normalized turn. ``tool`` denotes a tool *result*; a tool\n*call* is an ``assistant`` turn with ``tool_name`` set.",
+      "enum": [
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A single normalized turn within a session.",
+  "properties": {
+    "actor": {
+      "description": "Engineer identity (e.g. org email)",
+      "title": "Actor",
+      "type": "string"
+    },
+    "cache_creation_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache Creation Tokens"
+    },
+    "cache_read_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache Read Tokens"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Text content of the turn, if any",
+      "title": "Content"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Error string if the turn errored",
+      "title": "Error"
+    },
+    "id": {
+      "description": "Stable unique id for this turn",
+      "title": "Id",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Model id (assistant turns)",
+      "title": "Model"
+    },
+    "role": {
+      "$ref": "#/$defs/Role"
+    },
+    "seq": {
+      "description": "Monotonic order of this turn within the session",
+      "title": "Seq",
+      "type": "integer"
+    },
+    "session_id": {
+      "description": "Owning session id",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "source_event_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Raw transcript uuid",
+      "title": "Source Event Id"
+    },
+    "source_parent_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Raw transcript parentUuid",
+      "title": "Source Parent Id"
+    },
+    "timestamp": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Event time, if present",
+      "title": "Timestamp"
+    },
+    "tokens_in": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tokens In"
+    },
+    "tokens_out": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tokens Out"
+    },
+    "tool_input": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tool call arguments",
+      "title": "Tool Input"
+    },
+    "tool_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tool name for a call or result",
+      "title": "Tool Name"
+    },
+    "tool_output": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tool result content",
+      "title": "Tool Output"
+    },
+    "tool_use_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Pairs a tool call with its result",
+      "title": "Tool Use Id"
+    }
+  },
+  "required": [
+    "id",
+    "session_id",
+    "actor",
+    "seq",
+    "role"
+  ],
+  "title": "Turn",
+  "type": "object"
+}

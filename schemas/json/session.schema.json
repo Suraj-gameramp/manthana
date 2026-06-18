@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "Mode": {
+      "description": "Work/Personal classification. Personal-mode data never leaves the laptop.",
+      "enum": [
+        "work",
+        "personal"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "SessionEndReason": {
+      "description": "Why a session boundary was drawn (see decisions doc: capture rules).",
+      "enum": [
+        "gap",
+        "stop_hook",
+        "cap",
+        "open"
+      ],
+      "title": "SessionEndReason",
+      "type": "string"
+    },
+    "Surface": {
+      "description": "The tool surface a session was captured from.",
+      "enum": [
+        "claude_code",
+        "codex",
+        "cursor"
+      ],
+      "title": "Surface",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A normalized session across any captured surface.",
+  "properties": {
+    "actor": {
+      "description": "Engineer identity (e.g. org email)",
+      "title": "Actor",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "ended_reason": {
+      "$ref": "#/$defs/SessionEndReason",
+      "default": "open"
+    },
+    "id": {
+      "description": "Stable session id (surface session UUID when available)",
+      "title": "Id",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "work",
+      "description": "Work/Personal; personal never syncs"
+    },
+    "project": {
+      "description": "Inferred project name (git toplevel or cwd basename)",
+      "title": "Project",
+      "type": "string"
+    },
+    "repo_root": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "git rev-parse --show-toplevel, if any",
+      "title": "Repo Root"
+    },
+    "resumed_from": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Prior session id when a --resume crossed the 30-min window",
+      "title": "Resumed From"
+    },
+    "source_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Transcript file path this session was parsed from",
+      "title": "Source Path"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "surface": {
+      "$ref": "#/$defs/Surface"
+    },
+    "turn_count": {
+      "default": 0,
+      "title": "Turn Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "actor",
+    "surface",
+    "project",
+    "started_at"
+  ],
+  "title": "Session",
+  "type": "object"
+}
