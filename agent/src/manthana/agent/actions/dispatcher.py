@@ -49,8 +49,16 @@ class Dispatcher:
                 continue
             action = handler.action
 
-            # 1. Personal-mode exclusion (hard invariant).
-            if session is not None and session.mode is Mode.personal:
+            # 1. Trust gate — FAIL CLOSED. The local dispatcher only handles
+            #    session-scoped events; an unresolvable session (None id or an
+            #    unknown id) is excluded, mirroring sync.eligible_for_sync.
+            #    Personal-mode sessions are excluded from all actions.
+            if session is None:
+                entries.append(
+                    self._log(action, event, now, ActionOutcome.suppressed, "session_unresolved")
+                )
+                continue
+            if session.mode is Mode.personal:
                 entries.append(
                     self._log(
                         action, event, now, ActionOutcome.suppressed, "personal_mode_excluded"

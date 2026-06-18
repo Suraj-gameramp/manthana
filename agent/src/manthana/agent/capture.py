@@ -56,6 +56,10 @@ def ingest_file(
         mode=mode,
     )
 
+    # Idempotent re-ingest: drop any prior rows for this transcript's session
+    # family before persisting the freshly sessionized result (no phantom splits).
+    store.delete_session_family(meta.session_id)
+
     persisted: list[Session] = []
     for session, seg_turns in sessions:
         store.upsert_session(session)

@@ -12,7 +12,7 @@ SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from manthana.schemas import (
@@ -26,15 +26,22 @@ from manthana.schemas import (
 )
 from sqlalchemy.engine import Engine
 from sqlmodel import Session as DBSession
-from sqlmodel import select
+from sqlmodel import col, select
 
 from .engine import MEMORY, create_db_engine
 from .migrations import run_migrations
 from .tables import ActionAuditRow, CompactionRow, ConsentRow, SessionRow, TurnRow
 
 
+def _utc_iso(value: datetime) -> str:
+    """UTC ISO-8601 for index columns, so lexical TEXT ordering is chronological."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat()
+
+
 def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
+    return _utc_iso(value) if value is not None else None
 
 
 def _session_row(session: Session) -> SessionRow:
@@ -44,7 +51,7 @@ def _session_row(session: Session) -> SessionRow:
         surface=str(session.surface),
         project=session.project,
         mode=str(session.mode),
-        started_at=session.started_at.isoformat(),
+        started_at=_utc_iso(session.started_at),
         ended_at=_iso(session.ended_at),
         resumed_from=session.resumed_from,
         turn_count=session.turn_count,
@@ -74,7 +81,7 @@ def _compaction_row(compaction: BaseCompaction) -> CompactionRow:
         kind=compaction.kind,
         outcome=str(compaction.outcome),
         released=compaction.released,
-        started_at=compaction.started_at.isoformat(),
+        started_at=_utc_iso(compaction.started_at),
         tier_used=compaction.tier_used,
         est_cost_usd=compaction.est_cost_usd,
         data=compaction.model_dump(mode="json"),
@@ -153,6 +160,37 @@ class Store:
             db.merge(_session_row(model))
             db.commit()
             return True
+
+    def delete_session_family(self, base_session_id: str) -> int:
+        """Delete a base session, its derived split sessions (``base.2`` …), and
+        all their turns + compactions — so re-ingesting a transcript is
+        idempotent and never leaves stale/phantom rows. Returns rows removed.
+        """
+        family_like = f"{base_session_id}.%"
+        removed = 0
+        with DBSession(self._engine) as db:
+            derived = db.exec(
+                select(SessionRow).where(col(SessionRow.id).like(family_like))
+            ).all()
+            ids = [base_session_id, *(row.id for row in derived)]
+            for sid in ids:
+                for turn in db.exec(select(TurnRow).where(TurnRow.session_id == sid)).all():
+                    db.delete(turn)
+                    removed += 1
+                for comp in db.exec(
+                    select(CompactionRow).where(CompactionRow.session_id == sid)
+                ).all():
+                    db.delete(comp)
+                    removed += 1
+            for row in derived:
+                db.delete(row)
+                removed += 1
+            base = db.get(SessionRow, base_session_id)
+            if base is not None:
+                db.delete(base)
+                removed += 1
+            db.commit()
+        return removed
 
     def update_session_tags(self, session_id: str, tags: dict[str, str]) -> bool:
         with DBSession(self._engine) as db:
@@ -244,7 +282,7 @@ class Store:
                     id=entry.id,
                     action_id=entry.action_id,
                     actor=entry.actor,
-                    fired_at=entry.fired_at.isoformat(),
+                    fired_at=_utc_iso(entry.fired_at),
                     outcome=str(entry.outcome),
                     data=entry.model_dump(mode="json"),
                 )

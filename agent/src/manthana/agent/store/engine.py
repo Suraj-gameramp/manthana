@@ -1,9 +1,10 @@
 """SQLite engine creation + per-connection configuration.
 
-Sets the same pragmas ECC used (``foreign_keys=ON``, WAL journaling) and, if the
-optional ``sqlite-vec`` extension is installed, loads it so vector features can be
-added later without a schema change. ``sqlite-vec`` is wired but optional: a
-missing package or a Python build without ``enable_load_extension`` is ignored.
+Sets the same pragmas as affaan-m/ECC ``scripts/lib/state-store/index.js``
+(MIT, 2026 Affaan Mustafa) — ``foreign_keys=ON`` and WAL journaling. The optional
+``sqlite-vec`` extension loading is a Manthana addition: if installed it is loaded
+so vector features can be added later without a schema change; a missing package
+or a Python build without ``enable_load_extension`` is ignored.
 
 SPDX-License-Identifier: Apache-2.0
 """

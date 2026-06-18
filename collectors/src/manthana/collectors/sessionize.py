@@ -49,6 +49,10 @@ def _segment(turns: list[Turn]) -> list[tuple[list[Turn], SessionEndReason]]:
         if not current:
             seg_start = ts
         current.append(turn)
+        # Late-init: if the segment opened with timestamp-less turns, anchor
+        # seg_start to the first real timestamp so the cap check works.
+        if seg_start is None and ts is not None:
+            seg_start = ts
         if ts is not None:
             last_ts = ts
 

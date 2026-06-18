@@ -33,14 +33,34 @@ class Migration:
 
 
 def _create_initial_tables(conn: Connection) -> None:
-    SQLModel.metadata.create_all(conn)
+    """v1 core tables: session, turn, compaction."""
+    SQLModel.metadata.create_all(
+        conn,
+        tables=[
+            tables.SessionRow.__table__,  # type: ignore[list-item]
+            tables.TurnRow.__table__,  # type: ignore[list-item]
+            tables.CompactionRow.__table__,  # type: ignore[list-item]
+        ],
+    )
 
 
+def _create_action_consent_tables(conn: Connection) -> None:
+    """Action audit log + consent registry (added in v2)."""
+    SQLModel.metadata.create_all(
+        conn,
+        tables=[
+            tables.ActionAuditRow.__table__,  # type: ignore[list-item]
+            tables.ConsentRow.__table__,  # type: ignore[list-item]
+        ],
+    )
+
+
+# Each migration creates exactly the tables it introduces (create_all is
+# idempotent / checkfirst), so a database at v1 gains the action+consent tables
+# when v2 applies, and fresh databases get everything in order.
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="001_initial", apply=_create_initial_tables),
-    # create_all is idempotent (checkfirst): migration 2 adds the action_audit
-    # and consent tables to databases already at version 1.
-    Migration(version=2, name="002_action_consent_tables", apply=_create_initial_tables),
+    Migration(version=2, name="002_action_consent_tables", apply=_create_action_consent_tables),
 ]
 
 _SCHEMA_MIGRATIONS_DDL = text(

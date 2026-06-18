@@ -6,8 +6,8 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — end of **Phase 5 (dashboard + auto-tag + dispatcher)**
-— vertical slice complete.
+Last updated: 2026-06-19 — vertical slice complete + adversarial review hardening
+(see §11).
 
 ---
 
@@ -309,3 +309,32 @@ aggregate with <4 distinct released-compaction contributors.
 **Next scope (not in this engagement):** server (FastAPI ingestion, Postgres +
 pgvector, multi-tenancy, k-anonymity, founder query), the remaining 7 v1 actions,
 skill miner v0, daemon packaging.
+
+## 11. Adversarial review hardening (2026-06-19)
+
+A multi-agent adversarial review (4 reviewers → skeptical triage) surfaced 11
+confirmed issues across the slice; all fixed with regression tests in
+`tests/test_review_fixes.py`:
+
+- **[high] Dispatcher fail-closed** — an unresolvable session (None/unknown id)
+  no longer reaches a handler; suppressed as `session_unresolved`, mirroring the
+  sync gate.
+- **[high] Sessionize boundary** — `seg_start` now late-initializes on the first
+  real timestamp, so gap/cap splits fire even when a segment opens with
+  timestamp-less turns.
+- **[high] Idempotent re-ingest** — `Store.delete_session_family` clears a
+  transcript's session family before re-persist (no phantom `S.2` / stale
+  `turn_count`); verified on real data (425 sessions stable across re-ingest).
+- **[med] UTC ordering** — index columns store UTC ISO (`_utc_iso`) so lexical
+  `ORDER BY` is chronological across mixed offsets (fixes `list_*` /
+  `last_fired_at`/cooldown ordering).
+- **[med] Robust JSON extraction** — compactor `_extract_json` scans braces with
+  `raw_decode`, surviving prose/fences with stray braces.
+- **[low] Cost tier consistency** — `resolve_tier` returns the applied pricing
+  tier (sonnet for unknown-but-present models), so `tier` agrees with `usd`.
+- **[low] `_str_list` excludes bool** (bool is an int subclass).
+- **[low] Migration honesty** — migration 2 creates exactly the action/consent
+  tables via a dedicated function.
+- **[low] Attribution roll-up** — `NOTICE` reflects shipped derivations (no
+  "[lands]" markers) and includes `engine.py` (pragmas) and `claude_code.py`
+  (session-end.js line-handling); `engine.py` cites its exact ECC path.

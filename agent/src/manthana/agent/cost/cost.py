@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from manthana.schemas import Turn
 
-from .rates import get_rates, tier_of
+from .rates import get_rates, resolve_tier
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ def estimate_cost(turns: Iterable[Turn]) -> CostBreakdown:
         cache_write_tokens=cache_write,
         cache_read_tokens=cache_read,
         model=model,
-        tier=tier_of(model),
+        tier=resolve_tier(model),
         usd=usd,
     )
 

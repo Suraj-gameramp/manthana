@@ -45,4 +45,16 @@ def tier_of(model: str | None) -> str | None:
     return None
 
 
-__all__ = ["RATE_TABLE", "get_rates", "tier_of"]
+def resolve_tier(model: str | None) -> str | None:
+    """The tier actually used for pricing — matches ``get_rates``.
+
+    Unrecognized-but-present models price as sonnet (the ``get_rates`` default),
+    so this returns ``"sonnet"`` for them rather than ``None``; only a missing
+    model returns ``None``. Keeps ``CostBreakdown.tier`` consistent with ``usd``.
+    """
+    if not model:
+        return None
+    return tier_of(model) or "sonnet"
+
+
+__all__ = ["RATE_TABLE", "get_rates", "tier_of", "resolve_tier"]

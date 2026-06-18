@@ -29,26 +29,38 @@ from .prompt import PROMPT_VERSION, build_prompt
 
 
 def _extract_json(raw: str) -> dict[str, Any]:
-    """Best-effort parse of a JSON object from model output."""
-    raw = raw.strip()
+    """Best-effort parse of a JSON object from model output.
+
+    Tries the whole string, then scans each ``{`` and uses ``raw_decode`` so
+    surrounding prose or ```json fences (and stray braces in that prose) don't
+    break extraction.
+    """
+    text = raw.strip()
     try:
-        value = json.loads(raw)
-        return value if isinstance(value, dict) else {}
+        value = json.loads(text)
+        if isinstance(value, dict):
+            return value
     except json.JSONDecodeError:
         pass
-    start, end = raw.find("{"), raw.rfind("}")
-    if 0 <= start < end:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
         try:
-            value = json.loads(raw[start : end + 1])
-            return value if isinstance(value, dict) else {}
+            value, _end = decoder.raw_decode(text[index:])
         except json.JSONDecodeError:
-            return {}
+            continue
+        if isinstance(value, dict):
+            return value
     return {}
 
 
 def _str_list(value: Any) -> list[str]:
     if isinstance(value, list):
-        return [str(v) for v in value if isinstance(v, str | int | float)]
+        # bool is a subclass of int — exclude it so True/False don't become strings.
+        return [
+            str(v) for v in value if isinstance(v, str | int | float) and not isinstance(v, bool)
+        ]
     return []
 
 

@@ -9,33 +9,44 @@ LICENSES/MIT-ECC.txt.
 Components and literals derived from ECC
 --------------------------------------------------------------------------------
 
-Re-expressed in Python (pattern reuse; no verbatim copy):
-
-  * Data-home resolution (MANTHANA_DATA_HOME) — re-expressed from
-    scripts/lib/agent-data-home.js into
-    agent/src/manthana/agent/datahome.py.
-
-  * Collector / adapter-registry pattern — re-expressed from
-    scripts/lib/session-adapters/{registry,canonical-session,claude-history}.js
-    into collectors/src/manthana/collectors/base.py.
-
-  * State-store entity definitions — schemas/state-store.schema.json is the
-    starting point that Manthana's schema package (schemas/src/manthana/schemas/)
-    extends with the Turn / Session / Compaction entities.
-
 Copied verbatim (with a per-file attribution comment at the copy site):
 
   * Secret / approval-command / sensitive-path detection literals
-    (SECRET_PATTERNS, APPROVAL_COMMANDS, SENSITIVE_PATHS) — copied from
-    scripts/hooks/governance-capture.js. [lands in Phase 3 — redaction]
+    (SECRET_PATTERNS, APPROVAL_COMMANDS, SENSITIVE_PATHS) — from
+    scripts/hooks/governance-capture.js into
+    agent/src/manthana/agent/redaction/patterns.py.
 
-  * Model cost RATE_TABLE and transcript token-summation logic — copied from
-    scripts/hooks/cost-tracker.js. [lands in Phase 4 — compactor/cost]
+  * Model cost RATE_TABLE (per-1M-token rates) — from
+    scripts/hooks/cost-tracker.js into
+    agent/src/manthana/agent/cost/rates.py.
 
-  * State-store layer pattern (SQLite local + Postgres server) — re-expressed
-    from scripts/lib/state-store/{schema,migrations,queries,index}.js.
-    [lands in Phase 1 — local store]
+Re-expressed in Python (pattern reuse; same logic, idiomatic rewrite):
 
-Entries marked "[lands in Phase N]" are planned imports tracked here so the
-attribution exists before the code does; each will carry its own per-file
-attribution comment when written.
+  * Data-home resolution (MANTHANA_DATA_HOME) — from
+    scripts/lib/agent-data-home.js into
+    agent/src/manthana/agent/datahome.py.
+
+  * Collector / adapter-registry pattern — from
+    scripts/lib/session-adapters/{registry,canonical-session,claude-history}.js
+    into collectors/src/manthana/collectors/base.py.
+
+  * JSONL line-handling edge cases (skip unparseable lines, string-or-array
+    content, nested blocks) — from scripts/hooks/session-end.js
+    (extractSessionSummary) into
+    collectors/src/manthana/collectors/claude_code.py.
+
+  * State-store layer (schema-validated JSON documents, query API) and the
+    versioned migration framework — from scripts/lib/state-store/{index,
+    queries,migrations,schema}.js into
+    agent/src/manthana/agent/store/{store,migrations,tables}.py.
+
+  * SQLite connection pragmas (foreign_keys=ON, WAL) — from
+    scripts/lib/state-store/index.js into
+    agent/src/manthana/agent/store/engine.py.
+
+  * Cost token-summation logic — from scripts/hooks/cost-tracker.js
+    (sumUsageFromTranscript) into agent/src/manthana/agent/cost/cost.py.
+
+State-store entity definitions in schemas/state-store.schema.json were the
+starting point that Manthana's schema package (schemas/src/manthana/schemas/)
+extends with the Turn / Session / Compaction entities.
