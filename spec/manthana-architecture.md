@@ -6,7 +6,7 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — end of **Phase 0 (Foundation)**.
+Last updated: 2026-06-19 — end of **Phase 1 (local SQLite store)**.
 
 ---
 
@@ -120,6 +120,34 @@ A raw Claude Code line may produce several Turns, ordered by `seq`:
 Field map (verified against real `~/.claude/projects/<slug>/<sessionId>.jsonl`)
 is documented at the top of `turn.py`.
 
+## 4a. Local store (`manthana.agent.store`, Phase 1)
+
+SQLite at `$MANTHANA_DATA_HOME/manthana.db` via SQLModel. Modules:
+`tables.py` (table models), `migrations.py` (versioned migrations), `engine.py`
+(engine + pragmas + optional sqlite-vec), `store.py` (`Store` CRUD/query API).
+
+**Design decision — document-store-with-indexes** (logged per the standing
+instruction): `manthana.schemas` stays pure Pydantic (DB-free, for the JSON
+mirror and cross-language reuse). Each table carries typed **index columns**
+(for `WHERE`/`ORDER BY`) plus an authoritative **`data` JSON column** holding the
+full model dump; domain objects are reconstructed from `data` (so no field drifts
+between contract and table). This re-expresses ECC's schema-validated
+JSON-document store (`scripts/lib/state-store/`) and handles compaction
+polymorphism trivially (`CompactionAdapter.validate_python(row.data)`). This is a
+deliberate divergence from the decisions doc's literal "one SQLModel class for
+validation + DB": validation lives in the contract package, persistence in the
+store, joined by a round-trip test.
+
+**Migrations** re-express ECC `migrations.js`: a `schema_migrations` table tracks
+versions; pending migrations apply in order inside one transaction; idempotent.
+Migration 1 builds tables from SQLModel metadata; later migrations may be raw SQL.
+
+**Store API:** `Store.open(path|None)` / `Store.open_memory()`; sessions
+(`upsert_session`, `get_session`, `list_sessions`, `set_session_mode`); turns
+(`add_turns`, `get_turns`, `count_turns`); compactions (`upsert_compaction`,
+`get_compaction`, `list_compactions`, `mark_released`). Sync (not async) for the
+local agent; the server uses async later.
+
 ## 5. Trust contract in code
 
 **The single sync chokepoint:** `manthana.agent.sync.eligible_for_sync`. ALL
@@ -175,9 +203,10 @@ aggregate with <4 distinct released-compaction contributors.
 
 ## 10. Phase status
 
-- ✅ **Phase 0 — Foundation** (this doc's subject): monorepo, schemas + JSON
-  mirror, attribution, personal-mode invariant, CI. `ruff`/`pyright`/`pytest`
-  green.
-- ⏭ **Phase 1** — local SQLite store (SQLModel + migrations).
-- Phases 2–5 — collector, redaction + mode, compactor + cost, dashboard +
-  auto-tag + dispatcher.
+- ✅ **Phase 0 — Foundation**: monorepo, schemas + JSON mirror, attribution,
+  personal-mode invariant, CI. Green.
+- ✅ **Phase 1 — Local SQLite store** (§4a): SQLModel tables, versioned
+  migrations, `Store` CRUD, sqlite-vec wired optional. Green (15 tests).
+- ⏭ **Phase 2** — Claude Code collector + session/project inference.
+- Phases 3–5 — redaction + mode, compactor + cost, dashboard + auto-tag +
+  dispatcher.
