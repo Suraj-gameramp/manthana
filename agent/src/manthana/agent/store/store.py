@@ -360,12 +360,33 @@ class Store:
     # ── sync state (idempotent agent→server sync) ─────────────────────────
     def mark_synced(self, compaction_id: str, when: datetime) -> None:
         with DBSession(self._engine) as db:
-            db.merge(SyncStateRow(compaction_id=compaction_id, synced_at=when.isoformat()))
+            row = db.get(SyncStateRow, compaction_id) or SyncStateRow(compaction_id=compaction_id)
+            row.synced_at = when.isoformat()
+            db.merge(row)
+            db.commit()
+
+    def mark_raw_synced(self, compaction_id: str, when: datetime) -> None:
+        with DBSession(self._engine) as db:
+            row = db.get(SyncStateRow, compaction_id) or SyncStateRow(compaction_id=compaction_id)
+            row.raw_synced_at = when.isoformat()
+            db.merge(row)
             db.commit()
 
     def synced_ids(self) -> set[str]:
         with DBSession(self._engine) as db:
-            return {row.compaction_id for row in db.exec(select(SyncStateRow))}
+            return {
+                row.compaction_id
+                for row in db.exec(select(SyncStateRow))
+                if row.synced_at is not None
+            }
+
+    def raw_synced_ids(self) -> set[str]:
+        with DBSession(self._engine) as db:
+            return {
+                row.compaction_id
+                for row in db.exec(select(SyncStateRow))
+                if row.raw_synced_at is not None
+            }
 
 
 __all__ = ["Store"]

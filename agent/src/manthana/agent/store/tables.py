@@ -97,12 +97,15 @@ class ConsentRow(SQLModel, table=True):
 
 
 class SyncStateRow(SQLModel, table=True):
-    """Tracks which compactions have been synced to the org server (idempotency)."""
+    """Tracks which compactions (and their raw transcripts) have synced to the
+    org server. Metadata and raw are tracked separately so a failed raw upload
+    retries without re-pushing metadata."""
 
     __tablename__ = "sync_state"  # type: ignore[assignment]
 
     compaction_id: str = Field(primary_key=True)
-    synced_at: str
+    synced_at: str | None = Field(default=None)
+    raw_synced_at: str | None = Field(default=None)
 
 
 __all__ = [

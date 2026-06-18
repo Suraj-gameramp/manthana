@@ -23,6 +23,24 @@ from .patterns import APPROVAL_COMMANDS, PII_PATTERNS, SECRET_PATTERNS, SENSITIV
 
 PLACEHOLDER = "[REDACTED:{name}]"
 
+# Compaction fields that are structural / grouping / ids — never redacted (else
+# server grouping, k-anon buckets, and citations break). Everything else that is
+# str or list[str] is redacted by default (future subclass fields included).
+_COMPACTION_KEEP = frozenset(
+    {
+        "id",
+        "session_id",
+        "actor",
+        "surface",
+        "project",
+        "kind",
+        "tier_used",
+        "outcome",
+        "prompt_version",
+        "action_triggers",
+    }
+)
+
 
 @dataclass
 class RedactionConfig:
@@ -73,21 +91,28 @@ class Redactor:
         return out
 
     def redact_value(self, value: Any) -> Any:
-        """Recursively redact string values inside dicts/lists (e.g. tool_input)."""
+        """Recursively redact string values AND string keys inside dicts/lists."""
         if isinstance(value, str):
             return self.redact_text(value)
         if isinstance(value, dict):
-            return {k: self.redact_value(v) for k, v in value.items()}
+            return {
+                (self.redact_text(k) if isinstance(k, str) else k): self.redact_value(v)
+                for k, v in value.items()
+            }
         if isinstance(value, list):
             return [self.redact_value(v) for v in value]
         return value
 
     def redact_turn(self, turn: Turn) -> Turn:
-        """Return a redacted COPY of a turn (original is left untouched)."""
+        """Return a redacted COPY of a turn (original is left untouched).
+
+        Redacts every free-text field — including ``error`` (stack traces can echo
+        secrets/PII) and dict keys/values in ``tool_input``."""
         return turn.model_copy(
             update={
                 "content": self.redact_text(turn.content),
                 "tool_output": self.redact_text(turn.tool_output),
+                "error": self.redact_text(turn.error),
                 "tool_input": (
                     self.redact_value(turn.tool_input) if turn.tool_input else turn.tool_input
                 ),
@@ -98,20 +123,27 @@ class Redactor:
         return [self.redact_turn(t) for t in turns]
 
     def redact_compaction(self, compaction: BaseCompaction) -> BaseCompaction:
-        """Return a redacted COPY of a compaction's free-text fields, applied on
-        the path to release (subclass + extra fields are preserved by model_copy)."""
-        friction = [
+        """Return a redacted COPY of a compaction, applied on the path to release.
+
+        Default-redacts EVERY str / list[str] field (so subclass fields like
+        EngineeringCompaction.files_touched are scrubbed too) except structural,
+        grouping, and id fields in ``_COMPACTION_KEEP``; friction descriptions are
+        redacted explicitly. Subclass + extra fields are preserved by model_copy.
+        """
+        update: dict[str, Any] = {}
+        for name in type(compaction).model_fields:
+            if name in _COMPACTION_KEEP or name == "friction_points":
+                continue
+            value = getattr(compaction, name)
+            if isinstance(value, str):
+                update[name] = self.redact_text(value)
+            elif isinstance(value, list) and value and all(isinstance(x, str) for x in value):
+                update[name] = [self.redact_text(x) for x in value]
+        update["friction_points"] = [
             fp.model_copy(update={"description": self.redact_text(fp.description)})
             for fp in compaction.friction_points
         ]
-        return compaction.model_copy(
-            update={
-                "task_intent": self.redact_text(compaction.task_intent),
-                "approach": self.redact_text(compaction.approach),
-                "artifacts": [self.redact_text(a) for a in compaction.artifacts],
-                "friction_points": friction,
-            }
-        )
+        return compaction.model_copy(update=update)
 
     # ── governance detectors (from ECC; not redaction, but available) ──────
     def detect_approval_required(self, command: str | None) -> list[str]:

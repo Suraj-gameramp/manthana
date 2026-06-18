@@ -455,3 +455,22 @@ redacted before egress.
 
 **The v1 trust loop is now complete.** Still next: remaining v1.5 actions, skill
 miner v0 (pgvector), daemon packaging, server-side real LLM provider (v1.5).
+
+## 15. Sync egress review hardening (2026-06-19)
+
+A 2-reviewer pass over the egress path confirmed 5 issues (the eligibility gate
+itself had no bypass); all fixed with regression tests:
+
+- **[high] Redaction completeness (compaction)** — `redact_compaction` now
+  default-redacts every str / list[str] field except a structural keep-set, so
+  EngineeringCompaction fields (`files_touched`, `prs_opened`, …) are scrubbed,
+  not just `task_intent`/`approach`/`artifacts`.
+- **[high] Redaction completeness (turn)** — `redact_turn` now also scrubs
+  `error` (stack traces can echo secrets) and **dict keys** in `tool_input`.
+- **[high] Raw-upload sync-state** — metadata is `mark_synced` immediately after a
+  verified push (before raw); raw upload is isolated (per-item try/except) and
+  tracked separately (`raw_synced_at`), so a raw failure retries instead of being
+  lost or forcing a metadata re-push.
+- **[med] Verified ingest** — the client checks the server's `ingested` count
+  (raises `SyncError` on mismatch, so nothing is marked synced) and guards a
+  malformed 200 body.

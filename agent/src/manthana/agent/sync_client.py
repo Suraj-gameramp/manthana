@@ -67,7 +67,11 @@ class SyncClient:
         resp = self._client.post("/v1/compactions", json=payload, headers=self._headers())
         if resp.status_code != 200:
             raise SyncError(f"ingest failed ({resp.status_code}): {resp.text[:200]}")
-        return int(resp.json().get("ingested", 0))
+        try:
+            data = resp.json()
+        except (ValueError, json.JSONDecodeError) as exc:  # malformed 200 body (e.g. a proxy)
+            raise SyncError(f"malformed ingest response: {exc}") from exc
+        return int(data.get("ingested", 0))
 
     def push_raw(self, compaction_id: str, content: str) -> bool:
         resp = self._client.post(
@@ -85,25 +89,41 @@ class SyncClient:
         eligible = eligible_for_sync(store.list_compactions(limit=1_000_000), sessions)
         already = store.synced_ids()
         fresh = [c for c in eligible if c.id not in already]
-        if not fresh:
-            return SyncResult(pushed=0, skipped=len(eligible), raw_uploaded=0)
 
-        self.push_compactions([self.redactor.redact_compaction(c) for c in fresh])
+        pushed = 0
+        if fresh:
+            ingested = self.push_compactions([self.redactor.redact_compaction(c) for c in fresh])
+            if ingested != len(fresh):
+                raise SyncError(f"server ingested {ingested} of {len(fresh)}; not marking synced")
+            # Record metadata sync only after a verified push, BEFORE raw upload,
+            # so a raw failure never forces re-pushing metadata.
+            for compaction in fresh:
+                store.mark_synced(compaction.id, now)
+            pushed = len(fresh)
 
         raw_uploaded = 0
         if include_raw:
-            for compaction in fresh:
+            raw_done = store.raw_synced_ids()
+            # Raw is retryable on its own: any eligible compaction whose raw isn't
+            # yet uploaded (a prior failure stays a candidate; one failure doesn't
+            # abort the rest).
+            for compaction in eligible:
+                if compaction.id in raw_done:
+                    continue
                 turns = store.get_turns(compaction.session_id)
                 content = "\n".join(
                     json.dumps(self.redactor.redact_turn(t).model_dump(mode="json")) for t in turns
                 )
-                if self.push_raw(compaction.id, content):
+                try:
+                    ok = self.push_raw(compaction.id, content)
+                except (httpx.HTTPError, OSError):  # network error — retry next run
+                    ok = False
+                if ok:
+                    store.mark_raw_synced(compaction.id, now)
                     raw_uploaded += 1
 
-        for compaction in fresh:
-            store.mark_synced(compaction.id, now)
         return SyncResult(
-            pushed=len(fresh), skipped=len(eligible) - len(fresh), raw_uploaded=raw_uploaded
+            pushed=pushed, skipped=len(eligible) - pushed, raw_uploaded=raw_uploaded
         )
 
     def close(self) -> None:

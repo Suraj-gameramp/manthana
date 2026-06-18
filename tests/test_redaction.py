@@ -117,3 +117,53 @@ def test_personal_toggle_removes_from_sync_eligibility() -> None:
     assert store.set_session_mode("s1", Mode.personal) is True
     by_id = {s.id: s for s in store.list_sessions()}
     assert eligible_for_sync(store.list_compactions(), by_id) == []  # personal -> blocked
+
+
+# ── review fixes: redaction completeness ──────────────────────────────────
+_AWS = "AKIAIOSFODNN7EXAMPLE"
+
+
+def test_redact_turn_scrubs_error_and_dict_keys() -> None:
+    r = Redactor()
+    turn = Turn(
+        id="t",
+        session_id="s",
+        actor="e",
+        seq=0,
+        role=Role.tool,
+        error=f"failed: {_AWS}",
+        tool_input={"password='hunter2longenough'": "v", "note": _AWS},
+    )
+    red = r.redact_turn(turn)
+    assert _AWS not in (red.error or "")  # error is scrubbed
+    assert "hunter2longenough" not in str(red.tool_input)  # dict KEY scrubbed
+    assert _AWS not in str(red.tool_input)  # dict value scrubbed
+
+
+def test_redact_compaction_scrubs_subclass_and_friction_fields() -> None:
+    from manthana.schemas import EngineeringCompaction, FrictionCategory, FrictionPoint
+
+    r = Redactor()
+    comp = EngineeringCompaction(
+        id="c",
+        session_id="s",
+        actor="e",
+        surface=Surface.claude_code,
+        project="proj",
+        started_at=_T0,
+        ended_at=_T0,
+        duration_seconds=1.0,
+        task_intent="ok",
+        approach="ok",
+        outcome=Outcome.success,
+        files_touched=[f".env holds {_AWS}"],
+        friction_points=[
+            FrictionPoint(category=FrictionCategory.loop, description=f"token {_AWS}")
+        ],
+    )
+    red = r.redact_compaction(comp)
+    assert isinstance(red, EngineeringCompaction)
+    assert _AWS not in red.files_touched[0]  # subclass list field scrubbed
+    assert _AWS not in red.friction_points[0].description  # friction scrubbed
+    assert red.project == "proj"  # structural/grouping field preserved
+    assert red.id == "c" and red.kind == "engineering"
