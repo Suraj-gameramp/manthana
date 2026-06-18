@@ -6,8 +6,7 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — vertical slice + review hardening (§11), then the org
-server + founder query (§12).
+Last updated: 2026-06-19 — slice (§11) + server (§12,§13) + agent→server sync (§14).
 
 ---
 
@@ -424,3 +423,35 @@ fixed with regression tests in `tests/test_server_fixes.py`:
   (no spurious empty results); `cursor` added to the parse prompt.
 - **[med] Constant-time admin token** comparison (`hmac.compare_digest`).
 - **[low] Robust citations** — regex `[id]` extraction instead of substring scan.
+
+## 14. Agent → server sync transport (`manthana.agent.sync_client`)
+
+Closes the loop end-to-end. `SyncClient.sync(store)`:
+
+1. reads sync-eligible compactions via `eligible_for_sync` (the single egress
+   chokepoint — personal-mode excluded, released-only, fail-closed);
+2. skips ids already in the local `sync_state` table (idempotent / incremental);
+3. **redacts** each compaction's free text (`Redactor.redact_compaction`) —
+   redaction-on-release, so secrets/PII never cross the boundary (the local store
+   keeps full fidelity);
+4. POSTs the batch to `POST /v1/compactions` with the team JWT;
+5. optionally releases raw transcripts (redacted turns as JSONL) to
+   `POST /v1/compactions/{id}/raw` (`--raw`);
+6. records `mark_synced` for each pushed compaction.
+
+CLI: `manthana sync [--raw]` (server URL + team token from
+`MANTHANA_SERVER_URL`/`MANTHANA_TEAM_TOKEN` or `[server]` in `manthana.toml`).
+Local store gains a `sync_state` table (migration 3) + `mark_synced`/`synced_ids`.
+
+**Verified end-to-end** (`tests/test_sync.py` + capstone run): capture → compact
+→ release → sync → ingest → founder query returns a grounded, cited narrative;
+personal/unreleased compactions never sync; re-sync is idempotent; secrets are
+redacted before egress.
+
+### Phase status
+
+- ✅ **Phase 8 — Agent→server sync**: SyncClient (eligible→redact→POST), raw
+  release, idempotent sync-state, `manthana sync` CLI. 75 tests green.
+
+**The v1 trust loop is now complete.** Still next: remaining v1.5 actions, skill
+miner v0 (pgvector), daemon packaging, server-side real LLM provider (v1.5).

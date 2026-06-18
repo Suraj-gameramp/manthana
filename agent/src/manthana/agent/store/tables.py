@@ -96,4 +96,20 @@ class ConsentRow(SQLModel, table=True):
     data: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
 
 
-__all__ = ["SessionRow", "TurnRow", "CompactionRow", "ActionAuditRow", "ConsentRow"]
+class SyncStateRow(SQLModel, table=True):
+    """Tracks which compactions have been synced to the org server (idempotency)."""
+
+    __tablename__ = "sync_state"  # type: ignore[assignment]
+
+    compaction_id: str = Field(primary_key=True)
+    synced_at: str
+
+
+__all__ = [
+    "SessionRow",
+    "TurnRow",
+    "CompactionRow",
+    "ActionAuditRow",
+    "ConsentRow",
+    "SyncStateRow",
+]

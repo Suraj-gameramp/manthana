@@ -30,7 +30,14 @@ from sqlmodel import col, select
 
 from .engine import MEMORY, create_db_engine
 from .migrations import run_migrations
-from .tables import ActionAuditRow, CompactionRow, ConsentRow, SessionRow, TurnRow
+from .tables import (
+    ActionAuditRow,
+    CompactionRow,
+    ConsentRow,
+    SessionRow,
+    SyncStateRow,
+    TurnRow,
+)
 
 
 def _utc_iso(value: datetime) -> str:
@@ -349,6 +356,16 @@ class Store:
     def list_consent(self) -> list[ConsentEntry]:
         with DBSession(self._engine) as db:
             return [ConsentEntry.model_validate(r.data) for r in db.exec(select(ConsentRow))]
+
+    # ── sync state (idempotent agent→server sync) ─────────────────────────
+    def mark_synced(self, compaction_id: str, when: datetime) -> None:
+        with DBSession(self._engine) as db:
+            db.merge(SyncStateRow(compaction_id=compaction_id, synced_at=when.isoformat()))
+            db.commit()
+
+    def synced_ids(self) -> set[str]:
+        with DBSession(self._engine) as db:
+            return {row.compaction_id for row in db.exec(select(SyncStateRow))}
 
 
 __all__ = ["Store"]

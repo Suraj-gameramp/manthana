@@ -108,6 +108,36 @@ def dashboard(host: str = "127.0.0.1", port: int = 8765) -> None:
     uvicorn.run(create_app(Store.open()), host=host, port=port)
 
 
+@app.command()
+def sync(raw: bool = False) -> None:
+    """Push released, non-personal compactions to the org server.
+
+    Reads server URL + team token from MANTHANA_SERVER_URL / MANTHANA_TEAM_TOKEN
+    (or the [server] section of manthana.toml). --raw also releases transcripts.
+    """
+    import os
+
+    from manthana.agent.config import load_config
+    from manthana.agent.sync_client import SyncClient
+
+    config = load_config()
+    base = os.environ.get("MANTHANA_SERVER_URL") or config.server_url
+    token = os.environ.get("MANTHANA_TEAM_TOKEN") or config.team_token
+    if not base or not token:
+        typer.echo("set MANTHANA_SERVER_URL and MANTHANA_TEAM_TOKEN (or [server] in manthana.toml)")
+        raise typer.Exit(code=1)
+
+    client = SyncClient(base, token)
+    try:
+        result = client.sync(Store.open(), include_raw=raw)
+    finally:
+        client.close()
+    typer.echo(
+        f"synced {result.pushed} compaction(s); {result.skipped} already synced; "
+        f"raw uploaded {result.raw_uploaded}"
+    )
+
+
 def main() -> None:
     """Console-script entry point."""
     app()

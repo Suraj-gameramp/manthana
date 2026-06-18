@@ -24,6 +24,8 @@ class Config:
     embeddings_model: str = DEFAULT_EMBEDDINGS_MODEL
     redact_secrets: bool = True
     redact_pii: bool = True
+    server_url: str | None = None
+    team_token: str | None = None
 
 
 def config_path() -> Path:
@@ -37,10 +39,13 @@ def load_config(path: Path | None = None) -> Config:
     data = tomllib.loads(target.read_text())
     embeddings = data.get("embeddings", {})
     redaction = data.get("redaction", {})
+    server = data.get("server", {})
     return Config(
         embeddings_model=embeddings.get("model", DEFAULT_EMBEDDINGS_MODEL),
         redact_secrets=bool(redaction.get("secrets", True)),
         redact_pii=bool(redaction.get("pii", True)),
+        server_url=server.get("url"),
+        team_token=server.get("token"),
     )
 
 

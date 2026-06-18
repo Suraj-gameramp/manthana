@@ -55,12 +55,18 @@ def _create_action_consent_tables(conn: Connection) -> None:
     )
 
 
+def _create_sync_state_table(conn: Connection) -> None:
+    """Sync-state tracking for agent→server sync (added in v3)."""
+    SQLModel.metadata.create_all(conn, tables=[tables.SyncStateRow.__table__])  # type: ignore[list-item]
+
+
 # Each migration creates exactly the tables it introduces (create_all is
-# idempotent / checkfirst), so a database at v1 gains the action+consent tables
-# when v2 applies, and fresh databases get everything in order.
+# idempotent / checkfirst), so a database at an older version gains the new
+# tables when later migrations apply, and fresh databases get everything in order.
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="001_initial", apply=_create_initial_tables),
     Migration(version=2, name="002_action_consent_tables", apply=_create_action_consent_tables),
+    Migration(version=3, name="003_sync_state", apply=_create_sync_state_table),
 ]
 
 _SCHEMA_MIGRATIONS_DDL = text(

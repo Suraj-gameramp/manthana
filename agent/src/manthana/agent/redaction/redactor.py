@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, overload
 
-from manthana.schemas import Turn
+from manthana.schemas import BaseCompaction, Turn
 
 from .patterns import APPROVAL_COMMANDS, PII_PATTERNS, SECRET_PATTERNS, SENSITIVE_PATHS
 
@@ -96,6 +96,22 @@ class Redactor:
 
     def redact_turns(self, turns: list[Turn]) -> list[Turn]:
         return [self.redact_turn(t) for t in turns]
+
+    def redact_compaction(self, compaction: BaseCompaction) -> BaseCompaction:
+        """Return a redacted COPY of a compaction's free-text fields, applied on
+        the path to release (subclass + extra fields are preserved by model_copy)."""
+        friction = [
+            fp.model_copy(update={"description": self.redact_text(fp.description)})
+            for fp in compaction.friction_points
+        ]
+        return compaction.model_copy(
+            update={
+                "task_intent": self.redact_text(compaction.task_intent),
+                "approach": self.redact_text(compaction.approach),
+                "artifacts": [self.redact_text(a) for a in compaction.artifacts],
+                "friction_points": friction,
+            }
+        )
 
     # ── governance detectors (from ECC; not redaction, but available) ──────
     def detect_approval_required(self, command: str | None) -> list[str]:
