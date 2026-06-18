@@ -6,7 +6,7 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — end of **Phase 3 (redaction + Work/Personal mode)**.
+Last updated: 2026-06-19 — end of **Phase 4 (compactor + cost tracking)**.
 
 ---
 
@@ -192,6 +192,27 @@ local agent; the server uses async later.
   (`eligible_for_sync`), tested end-to-end. New CLI: `capture`, `sessions`,
   `mode`.
 
+## 4d. Compactor + cost (Phase 4)
+
+- **`manthana.agent.llm`**: `LLMProvider` protocol; `ClaudeCLIProvider`
+  (`claude -p --output-format json`, unwraps `.result`), `CodexCLIProvider`
+  (`codex exec`), `MockProvider` (deterministic, for CI), `default_provider()`.
+  No bundled key — uses the engineer's own access (decisions doc).
+- **`manthana.agent.cost`**: `RATE_TABLE` copied verbatim from ECC
+  `cost-tracker.js` + `get_rates`/`tier_of`; `estimate_cost(turns)` →
+  `CostBreakdown` (token sums + USD), re-expressed from `sumUsageFromTranscript`
+  but summing parsed Turn tokens.
+- **`manthana.agent.compactor`**: v0 prompt (`prompt.py`) serializes turns and
+  asks for a single JSON object; `Compactor.compact(session, turns)` parses
+  defensively (`_extract_json` tolerates prose/fences; malformed → grounded
+  fallback) and assembles an `EngineeringCompaction` — qualitative fields from
+  the LLM, **deterministic fields (ids, duration, cost/tier) from Manthana's own
+  data, never from the LLM**.
+- **`manthana.agent.compact`**: `compact_session` / `compact_pending` (skips
+  Personal-mode sessions). CLI: `manthana compact [session_id]`. The real
+  `claude -p` path is intentionally not auto-run in tests (token spend); covered
+  by MockProvider.
+
 ## 5. Trust contract in code
 
 **The single sync chokepoint:** `manthana.agent.sync.eligible_for_sync`. ALL
@@ -257,5 +278,7 @@ aggregate with <4 distinct released-compaction contributors.
 - ✅ **Phase 3 — Redaction + Work/Personal mode** (§4c): verbatim ECC secret
   patterns + PII, Redactor (copies), config, mode toggle wired to the sync gate,
   CLI (capture/sessions/mode). Green (29 tests).
-- ⏭ **Phase 4** — compactor + cost tracking.
-- Phase 5 — dashboard + auto-tag + dispatcher.
+- ✅ **Phase 4 — Compactor + cost** (§4d): LLM provider abstraction (Claude/Codex
+  CLI + Mock), verbatim ECC RATE_TABLE + cost estimation, v0 prompt, defensive
+  compactor → EngineeringCompaction. Green (37 tests).
+- ⏭ **Phase 5** — dashboard + auto-tag + dispatcher.

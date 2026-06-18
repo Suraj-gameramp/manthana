@@ -10,6 +10,7 @@ from importlib.metadata import version as _pkg_version
 
 import typer
 from manthana.agent.capture import ingest_all
+from manthana.agent.compact import compact_pending, compact_session
 from manthana.agent.datahome import db_path, resolve_data_home
 from manthana.agent.store import Store
 from manthana.schemas import Mode
@@ -68,6 +69,25 @@ def mode(session_id: str, value: str) -> None:
     store = Store.open()
     ok = store.set_session_mode(session_id, new_mode)
     typer.echo(f"{session_id} -> {new_mode}" if ok else f"no such session: {session_id}")
+
+
+@app.command()
+def compact(session_id: str = "") -> None:
+    """Compact a session (or all pending Work sessions if no id is given).
+
+    Uses the engineer's own model access (claude -p / codex exec).
+    """
+    store = Store.open()
+    if session_id:
+        result = compact_session(store, session_id)
+        typer.echo(
+            f"{result.id}: {result.outcome} (${result.est_cost_usd}, {result.tier_used})"
+            if result
+            else f"no such session: {session_id}"
+        )
+        return
+    results = compact_pending(store)
+    typer.echo(f"compacted {len(results)} pending session(s)")
 
 
 def main() -> None:
