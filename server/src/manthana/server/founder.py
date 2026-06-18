@@ -1,10 +1,10 @@
 """Founder query: structured-filter-first, narrative-second (decisions doc).
 
-Pipeline: NL query -> LLM-parsed structured filter -> SQL over released
-compactions (org-scoped) -> k-anonymity floor -> grounded narrative whose every
-claim cites compaction ids. Grounding is non-optional: a query that yields too
-few contributors (k-anon) or a narrative with no citations returns
-"insufficient data" rather than an ungrounded/hallucinated answer.
+Pipeline: NL query -> LLM-parsed + validated structured filter -> org-scoped SQL
+over released compactions -> k-anonymity floor (global AND per sub-aggregate) ->
+grounded narrative whose every claim cites compaction ids. Grounding is
+non-optional: too few contributors (k-anon), or a narrative with no citations,
+returns "insufficient data" rather than an ungrounded/hallucinated answer.
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
@@ -12,9 +12,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 from __future__ import annotations
 
 import json
+import re
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from manthana.schemas import Surface
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .config import ServerConfig
@@ -22,6 +25,9 @@ from .llm import LLMProvider
 from .store import ServerStore
 
 INSUFFICIENT = "insufficient data"
+_VALID_OUTCOMES = {"success", "partial", "abandoned"}
+_VALID_SURFACES = {s.value for s in Surface}
+_CITE_RE = re.compile(r"\[([^\]]+)\]")
 
 
 class FounderFilter(BaseModel):
@@ -56,7 +62,7 @@ class FounderResult:
 
 _PARSE_PROMPT = (
     "Parse this founder question into a JSON filter with keys: team_id, project, "
-    "outcome (success|partial|abandoned), actor, surface (claude_code|codex), "
+    "outcome (success|partial|abandoned), actor, surface (claude_code|codex|cursor), "
     "since (ISO date), until (ISO date). Use null for anything unspecified. "
     "Return ONLY the JSON object.\nQuestion: {query}"
 )
@@ -93,28 +99,46 @@ def _extract_json(raw: str) -> dict[str, Any]:
 def parse_filter(query: str, provider: LLMProvider) -> FounderFilter:
     data = _extract_json(provider.complete(_PARSE_PROMPT.format(query=query)))
     try:
-        return FounderFilter.model_validate(data)
+        spec = FounderFilter.model_validate(data)
     except ValidationError:
         return FounderFilter()
+    # Null out values that aren't valid enum members (else they silently match
+    # zero rows and the founder gets a spurious "insufficient data").
+    if spec.outcome is not None and spec.outcome not in _VALID_OUTCOMES:
+        spec.outcome = None
+    if spec.surface is not None and spec.surface not in _VALID_SURFACES:
+        spec.surface = None
+    return spec
 
 
-def _rollup(compactions: list[Any]) -> Rollup:
-    by_project: dict[str, int] = {}
-    by_outcome: dict[str, int] = {}
+def _rollup(compactions: list[Any], floor: int) -> tuple[Rollup, set[str]]:
+    """Build the rollup, suppressing any project/outcome sub-bucket backed by
+    fewer than ``floor`` distinct contributors. Returns the rollup and the set of
+    project buckets that survived (used to gate the narrative)."""
+    proj_count: dict[str, int] = defaultdict(int)
+    proj_contrib: dict[str, set[str]] = defaultdict(set)
+    out_count: dict[str, int] = defaultdict(int)
+    out_contrib: dict[str, set[str]] = defaultdict(set)
     actors: set[str] = set()
     total = 0.0
     for c in compactions:
-        by_project[c.project] = by_project.get(c.project, 0) + 1
-        by_outcome[str(c.outcome)] = by_outcome.get(str(c.outcome), 0) + 1
+        proj_count[c.project] += 1
+        proj_contrib[c.project].add(c.actor)
+        out_count[str(c.outcome)] += 1
+        out_contrib[str(c.outcome)].add(c.actor)
         actors.add(c.actor)
         total += c.est_cost_usd or 0.0
-    return Rollup(
+
+    by_project = {p: n for p, n in proj_count.items() if len(proj_contrib[p]) >= floor}
+    by_outcome = {o: n for o, n in out_count.items() if len(out_contrib[o]) >= floor}
+    rollup = Rollup(
         session_count=len(compactions),
         distinct_contributors=len(actors),
         by_project=by_project,
         by_outcome=by_outcome,
         total_cost_usd=round(total, 6),
     )
+    return rollup, set(by_project)
 
 
 def run_query(
@@ -136,34 +160,31 @@ def run_query(
         since=spec.since,
         until=spec.until,
     )
-    rollup = _rollup(compactions)
+    rollup, kept_projects = _rollup(compactions, config.k_anon_floor)
 
-    # k-anonymity floor: no team-level aggregate below the contributor floor.
+    # Global k-anonymity floor.
     if rollup.distinct_contributors < config.k_anon_floor:
         return FounderResult(
             filter=spec, rollup=None, narrative=INSUFFICIENT, citations=[], insufficient_data=True
         )
 
+    # Narrative only sees compactions whose project survived k-anon (so it cannot
+    # cite a single-contributor cohort).
+    visible = [c for c in compactions if c.project in kept_projects]
     brief = [
         {"id": c.id, "project": c.project, "intent": c.task_intent, "outcome": str(c.outcome)}
-        for c in compactions
+        for c in visible
     ]
     narrative = provider.complete(
-        _NARRATIVE_PROMPT.format(
-            rollup=json.dumps(rollup.__dict__), compactions=json.dumps(brief)
-        )
+        _NARRATIVE_PROMPT.format(rollup=json.dumps(rollup.__dict__), compactions=json.dumps(brief))
     ).strip()
 
-    citations = [c.id for c in compactions if f"[{c.id}]" in narrative]
-    # Non-optional grounding: a narrative that cites nothing is treated as
-    # ungrounded — return the factual rollup but withhold the narrative.
+    cited = set(_CITE_RE.findall(narrative))
+    citations = [c.id for c in visible if c.id in cited]
+    # Non-optional grounding: a narrative citing nothing is withheld (rollup kept).
     if not citations:
         return FounderResult(
-            filter=spec,
-            rollup=rollup,
-            narrative=INSUFFICIENT,
-            citations=[],
-            insufficient_data=True,
+            filter=spec, rollup=rollup, narrative=INSUFFICIENT, citations=[], insufficient_data=True
         )
 
     return FounderResult(

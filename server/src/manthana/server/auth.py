@@ -43,7 +43,12 @@ def issue_team_token(
 
 def verify_team_token(secret: str, token: str) -> TeamClaims:
     try:
-        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=[ALGORITHM],
+            options={"require": ["exp", "sub", "org", "team"], "verify_exp": True},
+        )
     except jwt.PyJWTError as exc:
         raise AuthError(str(exc)) from exc
     if payload.get("scope") != "agent":

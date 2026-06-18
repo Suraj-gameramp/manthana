@@ -15,6 +15,7 @@ pyright-clean and avoids ruff B008 (no function call in a default value).
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
 
+import hmac
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -68,7 +69,8 @@ def create_app(
     app = FastAPI(title="Manthana Server")
 
     def require_admin(x_admin_token: Annotated[str, Header()] = "") -> None:
-        if x_admin_token != config.admin_token:
+        # constant-time comparison — admin token gates org/team/token mint + founder query
+        if not hmac.compare_digest(x_admin_token, config.admin_token):
             raise HTTPException(status_code=401, detail="invalid admin token")
 
     def require_team(authorization: Annotated[str, Header()] = "") -> TeamClaims:
@@ -104,21 +106,30 @@ def create_app(
     def ingest(
         body: IngestBody, claims: Annotated[TeamClaims, Depends(require_team)]
     ) -> dict[str, int]:
-        count = 0
+        # Validate (and require released) the WHOLE batch before persisting any,
+        # so a bad item never leaves a partial commit.
+        compactions = []
         for raw in body.compactions:
             try:
                 compaction = CompactionAdapter.validate_python(raw)
             except ValidationError as exc:
                 raise HTTPException(status_code=422, detail=f"invalid compaction: {exc}") from exc
+            if not compaction.released:
+                raise HTTPException(
+                    status_code=422, detail=f"compaction {compaction.id} is not released"
+                )
+            compactions.append(compaction)
+        for compaction in compactions:
             store.ingest_compaction(compaction, org_id=claims.org_id, team_id=claims.team_id)
-            count += 1
-        return {"ingested": count}
+        return {"ingested": len(compactions)}
 
     @app.post("/v1/compactions/{compaction_id}/raw")
     def upload_raw(
         compaction_id: str, body: RawBody, claims: Annotated[TeamClaims, Depends(require_team)]
     ) -> dict[str, str]:
-        if store.get_compaction(compaction_id) is None:
+        # Tenant-scoped + released-only lookup; 404 (not 403) so cross-tenant
+        # existence is not disclosed.
+        if store.get_owned_compaction(compaction_id, claims.org_id, claims.team_id) is None:
             raise HTTPException(status_code=404, detail="unknown compaction")
         key = f"{claims.org_id}/{claims.team_id}/{compaction_id}.jsonl"
         object_store.put(key, body.content.encode("utf-8"))

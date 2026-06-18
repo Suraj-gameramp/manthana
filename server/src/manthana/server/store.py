@@ -2,15 +2,20 @@
 
 Same document-store pattern as the local store (typed index columns +
 authoritative ``data`` JSON; UTC-normalized timestamps for correct ordering).
-Tenancy: every row is scoped to an org (and team); the founder query is always
-org-scoped.
+
+Tenant isolation (defense-in-depth, post-review):
+  * Stored primary keys are **org-namespaced** (``org::id``) so a compaction id
+    from one org can never collide with / overwrite another org's row.
+  * Reads are **org-scoped** (and ``get_owned_*`` also team-scoped).
+  * The server is **fail-closed on release**: only ``released=True`` compactions
+    are stored as released and only released rows are ever returned.
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from manthana.schemas import BaseCompaction, CompactionAdapter
 from sqlalchemy.engine import Engine
@@ -28,6 +33,10 @@ from .tables import (
 )
 
 
+class NotReleasedError(ValueError):
+    """Raised when an unreleased compaction is offered to the server."""
+
+
 def _utc_iso(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
@@ -36,6 +45,34 @@ def _utc_iso(value: datetime) -> str:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _pk(org_id: str, compaction_id: str) -> str:
+    """Org-namespaced primary key (prevents cross-tenant id collisions)."""
+    return f"{org_id}::{compaction_id}"
+
+
+def _normalize_since(since: str | None) -> str | None:
+    if since is None:
+        return None
+    if "T" not in since and len(since) == 10:
+        return f"{since}T00:00:00+00:00"
+    return since
+
+
+def _until_bound(until: str | None) -> tuple[str, str] | None:
+    """Return (operator, value) for the upper bound: half-open '<' for a
+    date-only bound (so the whole boundary day is included), inclusive '<='
+    for a full timestamp."""
+    if until is None:
+        return None
+    if "T" not in until and len(until) == 10:
+        try:
+            nxt = date.fromisoformat(until) + timedelta(days=1)
+            return ("<", f"{nxt.isoformat()}T00:00:00+00:00")
+        except ValueError:
+            return ("<=", until)
+    return ("<=", until)
 
 
 class ServerStore:
@@ -64,9 +101,7 @@ class ServerStore:
     ) -> None:
         with DBSession(self._engine) as db:
             db.merge(
-                ActorRow(
-                    id=actor_id, org_id=org_id, team_id=team_id, display_name=display_name
-                )
+                ActorRow(id=actor_id, org_id=org_id, team_id=team_id, display_name=display_name)
             )
             db.commit()
 
@@ -74,15 +109,17 @@ class ServerStore:
         with DBSession(self._engine) as db:
             return db.get(OrgRow, org_id)
 
-    # ── ingestion ────────────────────────────────────────────────────────
+    # ── ingestion (fail-closed on release; org-namespaced PK) ─────────────
     def ingest_compaction(
         self, compaction: BaseCompaction, *, org_id: str, team_id: str
     ) -> None:
+        if not compaction.released:
+            raise NotReleasedError(f"compaction {compaction.id} is not released")
         self.upsert_actor(compaction.actor, org_id, team_id)
         with DBSession(self._engine) as db:
             db.merge(
                 ReleasedCompactionRow(
-                    id=compaction.id,
+                    id=_pk(org_id, compaction.id),
                     org_id=org_id,
                     team_id=team_id,
                     actor=compaction.actor,
@@ -91,6 +128,7 @@ class ServerStore:
                     outcome=str(compaction.outcome),
                     started_at=_utc_iso(compaction.started_at),
                     kind=compaction.kind,
+                    released=True,
                     tier_used=compaction.tier_used,
                     est_cost_usd=compaction.est_cost_usd,
                     data=compaction.model_dump(mode="json"),
@@ -98,10 +136,23 @@ class ServerStore:
             )
             db.commit()
 
-    def get_compaction(self, compaction_id: str) -> BaseCompaction | None:
+    def get_compaction(self, compaction_id: str, org_id: str) -> BaseCompaction | None:
+        """Org-scoped fetch of a released compaction."""
         with DBSession(self._engine) as db:
-            row = db.get(ReleasedCompactionRow, compaction_id)
-            return CompactionAdapter.validate_python(row.data) if row else None
+            row = db.get(ReleasedCompactionRow, _pk(org_id, compaction_id))
+            if row is None or not row.released:
+                return None
+            return CompactionAdapter.validate_python(row.data)
+
+    def get_owned_compaction(
+        self, compaction_id: str, org_id: str, team_id: str
+    ) -> BaseCompaction | None:
+        """Fetch a released compaction only if it belongs to this org AND team."""
+        with DBSession(self._engine) as db:
+            row = db.get(ReleasedCompactionRow, _pk(org_id, compaction_id))
+            if row is None or not row.released or row.team_id != team_id:
+                return None
+            return CompactionAdapter.validate_python(row.data)
 
     def query_compactions(
         self,
@@ -117,7 +168,11 @@ class ServerStore:
         limit: int | None = None,
     ) -> list[BaseCompaction]:
         with DBSession(self._engine) as db:
-            stmt = select(ReleasedCompactionRow).where(ReleasedCompactionRow.org_id == org_id)
+            stmt = (
+                select(ReleasedCompactionRow)
+                .where(ReleasedCompactionRow.org_id == org_id)
+                .where(ReleasedCompactionRow.released == True)  # noqa: E712 - SQL boolean column
+            )
             if team_id is not None:
                 stmt = stmt.where(ReleasedCompactionRow.team_id == team_id)
             if project is not None:
@@ -128,21 +183,25 @@ class ServerStore:
                 stmt = stmt.where(ReleasedCompactionRow.actor == actor)
             if surface is not None:
                 stmt = stmt.where(ReleasedCompactionRow.surface == surface)
-            if since is not None:
-                stmt = stmt.where(col(ReleasedCompactionRow.started_at) >= since)
-            if until is not None:
-                stmt = stmt.where(col(ReleasedCompactionRow.started_at) <= until)
+            since_norm = _normalize_since(since)
+            if since_norm is not None:
+                stmt = stmt.where(col(ReleasedCompactionRow.started_at) >= since_norm)
+            bound = _until_bound(until)
+            if bound is not None:
+                op, value = bound
+                column = col(ReleasedCompactionRow.started_at)
+                stmt = stmt.where(column < value if op == "<" else column <= value)
             stmt = stmt.order_by(ReleasedCompactionRow.started_at.desc())  # type: ignore[attr-defined]
             if limit is not None:
                 stmt = stmt.limit(limit)
             return [CompactionAdapter.validate_python(row.data) for row in db.exec(stmt)]
 
-    # ── raw transcript release ───────────────────────────────────────────
+    # ── raw transcript release (org-namespaced; ownership enforced by caller) ─
     def record_raw(self, compaction_id: str, org_id: str, object_key: str) -> None:
         with DBSession(self._engine) as db:
             db.merge(
                 RawTranscriptRow(
-                    id=f"raw-{compaction_id}",
+                    id=f"raw::{org_id}::{compaction_id}",
                     compaction_id=compaction_id,
                     org_id=org_id,
                     object_key=object_key,
@@ -169,4 +228,4 @@ class ServerStore:
             db.commit()
 
 
-__all__ = ["ServerStore"]
+__all__ = ["ServerStore", "NotReleasedError"]

@@ -36,6 +36,7 @@ def _comp(cid: str, actor: str, project: str = "demo") -> EngineeringCompaction:
         outcome=Outcome.success,
         est_cost_usd=0.5,
         tier_used="opus",
+        released=True,
     )
 
 

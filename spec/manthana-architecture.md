@@ -395,3 +395,32 @@ SQLite + in-memory object store + scripted provider.
 **Still next:** remaining 6 v1.5 actions, skill miner v0 (pgvector), daemon
 packaging, agent→server sync transport (the agent's `eligible_for_sync` →
 `/v1/compactions`).
+
+## 13. Server adversarial review hardening (2026-06-19)
+
+A 3-reviewer adversarial pass over the server surfaced 11 confirmed issues; all
+fixed with regression tests in `tests/test_server_fixes.py`:
+
+- **[high] Cross-tenant compaction isolation** — released-compaction PKs are now
+  org-namespaced (`org::id`), so one org's compaction id can never overwrite or
+  re-tag another's; reads are org-scoped.
+- **[high] Cross-tenant raw upload** — `POST /v1/compactions/{id}/raw` now uses
+  `get_owned_compaction` (org+team scoped) and 404s (not 403) cross-tenant.
+- **[high] Fail-closed on release** — the server rejects unreleased compactions
+  at ingest (`NotReleasedError`/422) AND only ever stores/returns
+  `released=True` rows (new `released` index column + query filter).
+- **[high] Raw upload requires release** — covered by the owned+released lookup.
+- **[high] Date-range off-by-a-day** — `until` (date-only) is treated as a
+  half-open upper bound so the whole boundary day is included; `since` expands to
+  `T00:00:00+00:00`.
+- **[med] Per-bucket k-anonymity** — `by_project`/`by_outcome` sub-aggregates
+  backed by < floor contributors are suppressed (not just the global count), and
+  the narrative only sees surviving cohorts.
+- **[med] Atomic batch ingest** — the whole batch is validated (and
+  release-checked) before any row is persisted.
+- **[med] JWT requires `exp`** + the org/team/sub claims at decode (rejects
+  forged/non-expiring tokens).
+- **[med] Filter validation** — invalid `outcome`/`surface` values are nulled
+  (no spurious empty results); `cursor` added to the parse prompt.
+- **[med] Constant-time admin token** comparison (`hmac.compare_digest`).
+- **[low] Robust citations** — regex `[id]` extraction instead of substring scan.

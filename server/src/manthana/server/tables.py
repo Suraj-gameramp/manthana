@@ -48,6 +48,7 @@ class ReleasedCompactionRow(SQLModel, table=True):
     outcome: str = Field(index=True)
     started_at: str = Field(index=True)  # UTC ISO-8601
     kind: str = Field(index=True)
+    released: bool = Field(default=False, index=True)
     tier_used: str | None = Field(default=None)
     est_cost_usd: float | None = Field(default=None)
     data: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
