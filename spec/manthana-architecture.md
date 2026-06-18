@@ -6,7 +6,7 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — end of **Phase 1 (local SQLite store)**.
+Last updated: 2026-06-19 — end of **Phase 2 (Claude Code collector)**.
 
 ---
 
@@ -148,6 +148,30 @@ Migration 1 builds tables from SQLModel metadata; later migrations may be raw SQ
 `get_compaction`, `list_compactions`, `mark_released`). Sync (not async) for the
 local agent; the server uses async later.
 
+## 4b. Capture pipeline (Phase 2)
+
+`manthana.collectors` (Apache-2.0) + `manthana.agent.capture`:
+
+- **`ClaudeCodeCollector`** (`collectors/claude_code.py`): `discover()` globs
+  `~/.claude/projects/*/*.jsonl` (excludes nested subagent files); `read(path)`
+  parses JSONL → ordered `Turn`s + `FileMeta(cwd, git_branch, session_id, mtime)`.
+  Parsing is fresh against the verified field map; flattening rules and once-per-
+  line token attribution are documented at the top of the module. Robust line
+  handling follows ECC `session-end.js`.
+- **`sessionize`** (`collectors/sessionize.py`): surface-agnostic boundary
+  inference — >30 min gap or >6 h cap split one transcript into multiple
+  Sessions, chained by `resumed_from`; Stop-hook boundary is a live-daemon
+  concern, not batch. Timestamps carry forward across meta lines.
+- **`infer_project`** (`collectors/project.py`): `git rev-parse --show-toplevel`
+  with cwd-basename fallback. **`resolve_actor`** (`collectors/identity.py`):
+  `$MANTHANA_ACTOR` → global git email → OS user.
+- **`CodexCollector`** (`collectors/codex.py`): registered stub (`parse` raises;
+  no verified local format).
+- **`manthana.agent.capture`**: `ingest_file` / `ingest_all` tie collector →
+  `sessionize` → `Store`. New sessions default to Work mode (Phase 3 adds the
+  toggle + redaction). Grounding: `ingest_all` over this machine's real data
+  ingested 209 files → 425 sessions → 28,622 turns.
+
 ## 5. Trust contract in code
 
 **The single sync chokepoint:** `manthana.agent.sync.eligible_for_sync`. ALL
@@ -207,6 +231,8 @@ aggregate with <4 distinct released-compaction contributors.
   personal-mode invariant, CI. Green.
 - ✅ **Phase 1 — Local SQLite store** (§4a): SQLModel tables, versioned
   migrations, `Store` CRUD, sqlite-vec wired optional. Green (15 tests).
-- ⏭ **Phase 2** — Claude Code collector + session/project inference.
-- Phases 3–5 — redaction + mode, compactor + cost, dashboard + auto-tag +
-  dispatcher.
+- ✅ **Phase 2 — Claude Code collector** (§4b): JSONL parse + flatten,
+  sessionization, project/actor inference, capture pipeline, Codex stub.
+  Green (22 tests); verified on real data.
+- ⏭ **Phase 3** — redaction pipeline + Work/Personal mode.
+- Phases 4–5 — compactor + cost, dashboard + auto-tag + dispatcher.
