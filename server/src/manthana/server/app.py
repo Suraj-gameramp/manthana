@@ -29,6 +29,7 @@ from .founder import run_query
 from .llm import LLMProvider, MockProvider
 from .storage import ObjectStore, make_object_store
 from .store import ServerStore
+from .ui import mount_ui
 
 
 class CreateOrg(BaseModel):
@@ -187,6 +188,7 @@ def create_app(
             )
         return {"proposals": out, "queued": len(out)}
 
+    mount_ui(app, config, store, provider)
     return app
 
 

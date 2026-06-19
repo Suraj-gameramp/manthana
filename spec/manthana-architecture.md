@@ -600,6 +600,42 @@ Reuses (not reinvented): `capture.ingest_all`, `compact.compact_session`,
 `skillminer.{mine_personal,write_proposal}`, `sync_client.SyncClient`,
 `store.*`, `cost.estimate_cost`. Green (107 tests); verified live on real data.
 
+## 20. Founder web console (`manthana.server.ui`)
+
+The org side now has a browser GUI beyond Swagger `/docs`
+(`mount_ui(app, config, store, provider)`, mounted by `create_app`):
+
+- **Auth — cookie login.** Org-wide data ⇒ gated (unlike the localhost employee
+  dashboard). `POST /ui/login` checks the admin token with
+  `hmac.compare_digest` (constant-time, same gate as `X-Admin-Token`) and sets an
+  **httponly** `manthana_admin` cookie; every `/ui*` route re-checks it and
+  **303-redirects unauthenticated callers to `/ui/login`, leaking no org data**.
+  The token rides in a POST form body, never a URL (needs `python-multipart`;
+  added as a server dep). `GET /ui/logout` clears the cookie.
+- **Pages / actions:** `GET /ui` console — founder-query form (org dropdown +
+  question) + a per-org table (teams, released-compaction count, pending-skill
+  queue) + a **Mine org skills** button. `POST /ui/query` → `founder.run_query`
+  → renders the rollup + grounded narrative + citations (or "insufficient data"
+  when k-anon/grounding fails — no hallucinated answer). `POST /ui/mine` →
+  `skills.mine_org` (hardcoded k-anon floor 4, names dropped) → `enqueue_action`
+  for each proposal → back to the console for approval.
+- **Reuse:** `founder.run_query`, `skills.mine_org`, `store.{list_orgs,list_teams,
+  count_compactions,query_compactions,enqueue_action,list_queue}`. Like `app.py`,
+  this module omits `from __future__ import annotations` so FastAPI can resolve
+  `Form`/`Cookie` on the closure-scoped routes at runtime. All values
+  `html.escape`d.
+- **Testability:** `tests/test_server_ui.py` (8 tests) on in-memory SQLite + a
+  `MockProvider` — covers the auth gate (unauth → redirect, no data), wrong-token
+  401, console listing, query rollup/citation, below-k-anon "insufficient", mine
+  enqueue, and logout. **115 tests green**; verified live against Postgres (5433):
+  gate → login → console (real `actioneer` org, 4 compactions) → query (real
+  rollup `{scribe: 4}`, narrative withheld since the dev server LLM is mock) →
+  mine (suppressed at 1 contributor) → logout.
+
+> Run the Postgres-backed server with the driver extra installed:
+> `uv pip install "psycopg[binary]"` (or `uv sync` the `manthana-server[postgres]`
+> extra) — a plain `uv sync --all-packages` does **not** pull optional extras.
+
 ### Phase status
 
 - ✅ **Phase 11 — Dashboard control plane**: compactions + skills pages + action

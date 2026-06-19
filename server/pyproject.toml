@@ -9,6 +9,7 @@ dependencies = [
     "manthana-skills",
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
     "sqlmodel>=0.0.22",
     "pyjwt>=2.9",
     "typer>=0.12",

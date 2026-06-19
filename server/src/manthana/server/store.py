@@ -112,6 +112,21 @@ class ServerStore:
         with DBSession(self._engine) as db:
             return db.get(OrgRow, org_id)
 
+    def list_orgs(self) -> list[OrgRow]:
+        with DBSession(self._engine) as db:
+            return list(db.exec(select(OrgRow)))
+
+    def list_teams(self, org_id: str) -> list[TeamRow]:
+        with DBSession(self._engine) as db:
+            return list(db.exec(select(TeamRow).where(TeamRow.org_id == org_id)))
+
+    def count_compactions(self, org_id: str) -> int:
+        with DBSession(self._engine) as db:
+            rows = db.exec(
+                select(ReleasedCompactionRow.id).where(ReleasedCompactionRow.org_id == org_id)
+            )
+            return len(list(rows))
+
     # ── ingestion (fail-closed on release; org-namespaced PK) ─────────────
     def ingest_compaction(
         self, compaction: BaseCompaction, *, org_id: str, team_id: str
