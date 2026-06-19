@@ -24,6 +24,9 @@ MEMORY = ":memory:"
 def _configure_connection(dbapi_conn: Any, _record: Any) -> None:
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    # Wait (up to 5s) for a lock rather than erroring immediately — the dashboard
+    # runs compaction in a background thread, so a read can briefly overlap a write.
+    cursor.execute("PRAGMA busy_timeout=5000")
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
     except Exception:  # noqa: BLE001 - WAL is rejected for in-memory/readonly
@@ -56,7 +59,13 @@ def create_db_engine(db_path: str | Path) -> Engine:
             poolclass=StaticPool,
         )
     else:
-        engine = create_engine(f"sqlite:///{Path(path_str).resolve()}")
+        # check_same_thread=False so a pooled connection can be used by the
+        # dashboard's background compaction thread (WAL + busy_timeout make the
+        # single-user read/write overlap safe).
+        engine = create_engine(
+            f"sqlite:///{Path(path_str).resolve()}",
+            connect_args={"check_same_thread": False},
+        )
     event.listen(engine, "connect", _configure_connection)
     return engine
 

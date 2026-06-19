@@ -9,6 +9,8 @@ SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -88,12 +90,63 @@ def test_compactions_and_skills_and_cost_and_actions_pages(tmp_path: Path) -> No
     assert client.get("/actions").status_code == 200
 
 
+def _wait_for(predicate, timeout: float = 2.0) -> bool:  # type: ignore[no-untyped-def]
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
 # ── actions mutate state ───────────────────────────────────────────────────
-def test_compact_button_creates_compaction(tmp_path: Path) -> None:
+def test_compact_button_runs_async_and_creates_compaction(tmp_path: Path) -> None:
     client, store = _build(tmp_path)
     resp = client.post("/session/s1/compact", follow_redirects=False)
-    assert resp.status_code == 303
-    assert store.get_compaction("comp-s1") is not None  # compacted via MockProvider
+    assert resp.status_code == 303  # returns immediately; compaction runs off-thread
+    assert _wait_for(lambda: store.get_compaction("comp-s1") is not None)
+
+
+def test_compact_shows_in_progress_then_completes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = _build(tmp_path)
+    gate = threading.Event()
+    real = dash_app.compact_session
+
+    def slow(*args: object, **kwargs: object) -> object:
+        gate.wait(2)  # hold the worker so the in-progress state is observable
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(dash_app, "compact_session", slow)
+    client.post("/session/s1/compact", follow_redirects=False)
+    # While the worker is gated, the Sessions page shows the in-progress state.
+    assert _wait_for(lambda: "compacting" in client.get("/").text)
+    gate.set()
+    assert _wait_for(lambda: store.get_compaction("comp-s1") is not None)
+    assert "✓ compacted" in client.get("/").text
+
+
+def test_double_compact_does_not_double_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = _build(tmp_path)
+    gate = threading.Event()
+    starts = {"n": 0}
+    real = dash_app.compact_session
+
+    def counting(*args: object, **kwargs: object) -> object:
+        starts["n"] += 1
+        gate.wait(2)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(dash_app, "compact_session", counting)
+    client.post("/session/s1/compact", follow_redirects=False)
+    assert _wait_for(lambda: starts["n"] == 1)
+    client.post("/session/s1/compact", follow_redirects=False)  # ignored while running
+    gate.set()
+    assert _wait_for(lambda: store.get_compaction("comp-s1") is not None)
+    assert starts["n"] == 1  # the second click did not start a second compaction
 
 
 def test_release_toggle(tmp_path: Path) -> None:

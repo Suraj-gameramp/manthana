@@ -636,6 +636,27 @@ The org side now has a browser GUI beyond Swagger `/docs`
 > `uv pip install "psycopg[binary]"` (or `uv sync` the `manthana-server[postgres]`
 > extra) — a plain `uv sync --all-packages` does **not** pull optional extras.
 
+## 21. Non-blocking compaction (dashboard)
+
+The dashboard's **Compact** button used to block the request for the whole
+~30-60s `claude` call. It now runs off the request thread:
+
+- `POST /session/{id}/compact` adds the id to an in-progress `set[str]` (guarded
+  by a `threading.Lock` held in the `create_app` closure), starts a **daemon
+  thread** running `compact_session`, and 303-redirects to `/` immediately. The
+  worker `discard`s the id in a `finally`. A second click while a session is
+  already compacting is a no-op (the lock-checked guard won't re-spawn).
+- The Sessions page renders **⏳ compacting…** for in-progress ids and **✓
+  compacted** once done, and emits `<meta http-equiv="refresh" content="4">`
+  **only while** something is in flight (it stops polling when idle).
+- **Cross-thread SQLite:** `store/engine.py` now opens the **file** engine with
+  `check_same_thread=False` (the in-memory engine already did) plus
+  `PRAGMA busy_timeout=5000`, so the worker thread's writes and the request
+  thread's reads coexist safely (WAL + short transactions, single user).
+- **Tests** (`tests/test_dashboard.py`): a gated provider makes the in-progress
+  state deterministic — async-completes, shows "compacting…" then "✓ compacted",
+  and a double-click does not start a second compaction. **117 tests green.**
+
 ### Phase status
 
 - ✅ **Phase 11 — Dashboard control plane**: compactions + skills pages + action

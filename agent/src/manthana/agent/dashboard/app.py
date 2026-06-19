@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 import json
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -50,10 +51,13 @@ def _e(value: object) -> str:
     return html.escape(str(value))
 
 
-def _page(title: str, body: str) -> str:
+def _page(title: str, body: str, *, refresh: int = 0) -> str:
+    # Auto-refresh (used by the Sessions page while a background compaction runs,
+    # so "⏳ compacting…" flips to "✓ compacted" without a manual reload).
+    refresh_tag = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh > 0 else ""
     return (
         f"<!doctype html><html><head><meta charset='utf-8'><title>Manthana — {title}</title>"
-        f"{_HTMX}{_STYLE}</head><body>"
+        f"{refresh_tag}{_HTMX}{_STYLE}</head><body>"
         "<h1>Manthana</h1>"
         "<nav><a href='/'>Sessions</a><a href='/compactions'>Compactions</a>"
         "<a href='/skills'>Skills</a><a href='/cost'>Cost</a><a href='/actions'>Actions</a></nav>"
@@ -71,7 +75,9 @@ def _mode_cell(session: Session) -> str:
     )
 
 
-def _compact_cell(session: Session, compacted: set[str]) -> str:
+def _compact_cell(session: Session, compacted: set[str], compacting: set[str]) -> str:
+    if session.id in compacting:
+        return "<span class='warn'>⏳ compacting… <small>(refreshes)</small></span>"
     if session.id in compacted:
         return "<span class='ok'>✓ compacted</span>"
     return (
@@ -80,13 +86,14 @@ def _compact_cell(session: Session, compacted: set[str]) -> str:
     )
 
 
-def _session_row(session: Session, compacted: set[str]) -> str:
+def _session_row(session: Session, compacted: set[str], compacting: set[str]) -> str:
     tags = ", ".join(f"{_e(k)}={_e(v)}" for k, v in session.tags.items()) or "—"
     return (
         f"<tr id='row-{_e(session.id)}'>"
         f"<td>{_e(session.id)}</td><td>{_e(session.project)}</td>"
         f"<td>{session.turn_count}</td><td>{tags}</td>"
-        f"<td>{_mode_cell(session)}</td><td>{_compact_cell(session, compacted)}</td></tr>"
+        f"<td>{_mode_cell(session)}</td>"
+        f"<td>{_compact_cell(session, compacted, compacting)}</td></tr>"
     )
 
 
@@ -154,11 +161,28 @@ def create_app(
     app = FastAPI(title="Manthana Dashboard")
     skills_path = skills_dir or _DEFAULT_SKILLS_DIR
 
+    # Sessions whose compaction is running in a background thread (the claude call
+    # is ~30-60s; the request returns immediately). Guarded by a lock since the
+    # worker thread and request handlers both touch it.
+    compacting: set[str] = set()
+    compacting_lock = threading.Lock()
+
+    def _run_compaction(session_id: str) -> None:
+        try:
+            compact_session(store, session_id, provider=provider)
+        finally:
+            with compacting_lock:
+                compacting.discard(session_id)
+
     # ── Sessions ─────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         compacted = {c.session_id for c in store.list_compactions(limit=100_000)}
-        rows = "".join(_session_row(s, compacted) for s in store.list_sessions(limit=200))
+        with compacting_lock:
+            in_progress = set(compacting)
+        rows = "".join(
+            _session_row(s, compacted, in_progress) for s in store.list_sessions(limit=200)
+        )
         bar = (
             "<div class='bar'><form method='post' action='/capture'>"
             "<button>⤓ Capture transcripts</button></form> "
@@ -169,7 +193,8 @@ def create_app(
             "<th>tags</th><th>mode</th><th>compaction</th></tr>"
             f"{rows or '<tr><td colspan=6>no sessions yet — click Capture</td></tr>'}</table>"
         )
-        return _page("Sessions", bar + table)
+        # Poll every 4s only while something is compacting, then stop.
+        return _page("Sessions", bar + table, refresh=4 if in_progress else 0)
 
     @app.post("/capture")
     def capture() -> RedirectResponse:
@@ -184,12 +209,27 @@ def create_app(
             pass
         session = store.get_session(session_id)
         compacted = {c.session_id for c in store.list_compactions(limit=100_000)}
-        return _session_row(session, compacted) if session else "<tr><td>gone</td></tr>"
+        with compacting_lock:
+            in_progress = set(compacting)
+        return (
+            _session_row(session, compacted, in_progress)
+            if session
+            else "<tr><td>gone</td></tr>"
+        )
 
     @app.post("/session/{session_id}/compact")
     def compact(session_id: str) -> RedirectResponse:
-        compact_session(store, session_id, provider=provider)
-        return RedirectResponse(url="/compactions", status_code=303)
+        # Run compaction off the request thread (the claude call blocks ~30-60s);
+        # the Sessions page shows "compacting…" and auto-refreshes until it lands.
+        with compacting_lock:
+            start = session_id not in compacting
+            if start:
+                compacting.add(session_id)
+        if start:
+            threading.Thread(
+                target=_run_compaction, args=(session_id,), daemon=True
+            ).start()
+        return RedirectResponse(url="/", status_code=303)
 
     # ── Compactions (review-before-sync inbox) ───────────────────────────
     @app.get("/compactions", response_class=HTMLResponse)
