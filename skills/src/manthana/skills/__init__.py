@@ -1,9 +1,11 @@
-"""Skill miner: cluster recurring compaction patterns → propose SKILL.md.
+"""Manthana skill miner (shared by the agent and the server).
 
 Pipeline: embed (``embed``) → cluster + recurrence/k-anon gate (``cluster``) →
 synthesize a generalized skill (``synthesize``) → validate/render the Anthropic
-SKILL.md (``skillmd``) → attach provenance + content hash (``provenance``). The
-``SkillMiner`` orchestrates it; ``mine_personal`` mines the engineer's own store.
+SKILL.md (``skillmd``) → attach provenance + content hash (``provenance``).
+``SkillMiner`` orchestrates it; ``mine_org`` is the k-anonymized cross-engineer
+entry point. Personal mining lives in ``manthana.agent.skillminer`` (it wires the
+agent's Redactor + local store).
 
 SPDX-License-Identifier: Apache-2.0
 """
@@ -12,15 +14,15 @@ from __future__ import annotations
 
 from .cluster import CompactionCluster, cluster_compactions, community_detection, recurring
 from .embed import Embedder, HashingEmbedder, default_embedder
-from .miner import K_ANON_FLOOR, SkillMiner, SkillProposal, mine_org, mine_personal, write_proposal
+from .miner import K_ANON_FLOOR, SkillMiner, SkillProposal, mine_org, write_proposal
 from .provenance import Provenance, make_provenance
+from .provider import LLMProvider, SupportsRedaction
 from .skillmd import SkillDraft, render_skill_md, validate_draft
 from .synthesize import synthesize
 
 __all__ = [
     "SkillMiner",
     "SkillProposal",
-    "mine_personal",
     "mine_org",
     "write_proposal",
     "K_ANON_FLOOR",
@@ -37,4 +39,6 @@ __all__ = [
     "synthesize",
     "Provenance",
     "make_provenance",
+    "LLMProvider",
+    "SupportsRedaction",
 ]

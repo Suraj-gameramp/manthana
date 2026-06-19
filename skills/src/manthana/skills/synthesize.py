@@ -16,8 +16,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..llm import LLMProvider
 from .cluster import CompactionCluster
+from .provider import LLMProvider
 from .skillmd import SkillDraft, repair_draft, slugify_name, validate_draft
 
 PROMPT_VERSION = "v0"

@@ -15,7 +15,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from manthana.schemas import BaseCompaction, CompactionAdapter
 from sqlalchemy.engine import Engine
@@ -24,6 +26,7 @@ from sqlmodel import col, select
 
 from .db import create_db_engine, init_db
 from .tables import (
+    ActionQueueRow,
     ActorRow,
     OrgConsentRow,
     OrgRow,
@@ -209,6 +212,41 @@ class ServerStore:
                 )
             )
             db.commit()
+
+    # ── action queue (seam) ──────────────────────────────────────────────
+    def enqueue_action(
+        self,
+        *,
+        action_id: str,
+        org_id: str,
+        payload: dict[str, Any],
+        team_id: str | None = None,
+    ) -> str:
+        """Enqueue a pending org action (e.g. an auto-drafted skill) for approval."""
+        queue_id = f"queue-{uuid.uuid4().hex[:12]}"
+        with DBSession(self._engine) as db:
+            db.merge(
+                ActionQueueRow(
+                    id=queue_id,
+                    action_id=action_id,
+                    org_id=org_id,
+                    team_id=team_id,
+                    status="pending",
+                    created_at=_now_iso(),
+                    data=payload,
+                )
+            )
+            db.commit()
+        return queue_id
+
+    def list_queue(self, org_id: str, *, status: str = "pending") -> list[ActionQueueRow]:
+        with DBSession(self._engine) as db:
+            stmt = (
+                select(ActionQueueRow)
+                .where(ActionQueueRow.org_id == org_id)
+                .where(ActionQueueRow.status == status)
+            )
+            return list(db.exec(stmt))
 
     # ── consent registry (seam) ──────────────────────────────────────────
     def set_consent(

@@ -12,7 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from manthana.agent.llm import MockProvider
-from manthana.agent.skillminer import (
+from manthana.schemas import EngineeringCompaction, Outcome, Surface
+from manthana.skills import (
     HashingEmbedder,
     SkillMiner,
     cluster_compactions,
@@ -23,16 +24,15 @@ from manthana.agent.skillminer import (
     validate_draft,
     write_proposal,
 )
-from manthana.agent.skillminer.embed import cosine
-from manthana.agent.skillminer.skillmd import (
+from manthana.skills.embed import cosine
+from manthana.skills.skillmd import (
     SkillDraft,
     repair_draft,
     slugify_name,
     validate_description,
     validate_name,
 )
-from manthana.agent.skillminer.synthesize import fallback_draft, synthesize
-from manthana.schemas import EngineeringCompaction, Outcome, Surface
+from manthana.skills.synthesize import fallback_draft, synthesize
 
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -224,7 +224,7 @@ def test_extract_json_prefers_real_answer_after_prose_example() -> None:
 
 
 def test_write_proposal_collision_does_not_clobber(tmp_path: Path) -> None:
-    from manthana.agent.skillminer.miner import SkillProposal
+    from manthana.skills.miner import SkillProposal
 
     cl = _cluster()
     d1 = SkillDraft("dup-skill", "desc one; use when a", "body one")
@@ -248,7 +248,7 @@ def test_mine_rejects_unsafe_contributor_disclosure() -> None:
 
 
 def test_mine_org_is_k_anonymized() -> None:
-    from manthana.agent.skillminer import mine_org
+    from manthana.skills import mine_org
 
     comps = [_comp(f"c{i}", f"s{i}", f"e{i}@x.com", "fix flaky pytest timeout") for i in range(4)]
     proposals = mine_org(comps, now=_T0)
@@ -260,7 +260,7 @@ def test_mine_org_is_k_anonymized() -> None:
 def test_provenance_validation_is_strict() -> None:
     from dataclasses import replace
 
-    from manthana.agent.skillminer.provenance import validate_provenance
+    from manthana.skills.provenance import validate_provenance
 
     cl = _cluster()
     good = make_provenance(cl, render_skill_md(fallback_draft(cl)), now=_T0)
@@ -271,15 +271,18 @@ def test_provenance_validation_is_strict() -> None:
     assert validate_provenance(replace(good, contributors=["a", "b"]))
 
 
-def test_miner_redacts_secrets_from_mined_skill() -> None:
+def test_injected_redactor_scrubs_secrets_from_mined_skill() -> None:
+    # The shared miner does not redact by default; the agent injects its Redactor.
+    from manthana.agent.redaction import Redactor
+
     secret = "AKIAIOSFODNN7EXAMPLE"
     comps = [
         _comp(f"c{i}", f"s{i}", "eng", f"deploy service with key {secret}", approach="ship it")
         for i in range(3)
     ]
-    proposals = SkillMiner(embedder=HashingEmbedder(), provider=None, threshold=0.5).mine(
-        comps, min_sessions=3, now=_T0
+    miner = SkillMiner(
+        embedder=HashingEmbedder(), provider=None, redactor=Redactor(), threshold=0.5
     )
+    proposals = miner.mine(comps, min_sessions=3, now=_T0)
     assert len(proposals) == 1
-    blob = proposals[0].skill_md
-    assert secret not in blob  # redacted before it reached the skill body/description
+    assert secret not in proposals[0].skill_md  # redacted before reaching the skill

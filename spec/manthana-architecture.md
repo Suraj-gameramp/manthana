@@ -6,7 +6,7 @@ updated every phase. Companion to `manthana.md` (vision), `manthana-decisions.md
 (locked decisions — wins on conflict), `manthana-action.md` (actions), and
 `ECC_clone_instruction.md` (reuse).*
 
-Last updated: 2026-06-19 — slice (§11) + server (§12,§13) + sync (§14,§15) + skill miner (§16).
+Last updated: 2026-06-19 — slice (§11) + server (§12,§13) + sync (§14,§15) + skill miner (§16,§17) + miner→server (§18).
 
 ---
 
@@ -552,3 +552,28 @@ regressions in `tests/test_skillminer.py`:
   large store can't OOM.
 - **[low] Provenance validation** — now also checks non-negative counts,
   non-empty evidence, `sha256:` hash, and contributor count↔names consistency.
+
+## 18. Skill miner extracted to a shared package + wired into the server
+
+To use the miner from the AGPL server without dragging in the local agent
+(dashboard/collectors), the skill miner was extracted to its own Apache-2.0
+workspace package **`manthana-skills`** (`skills/`, import `manthana.skills`),
+depended on by both `agent` and `server`.
+
+- **Decoupling:** the miner's provider + redactor are now injected via local
+  Protocols (`manthana.skills.provider.LLMProvider` / `SupportsRedaction`) — no
+  import of agent or server internals. `SkillMiner(redactor=None)` by default.
+- **Agent** (`manthana.agent.skillminer`, thin shim): `mine_personal(store)` wires
+  the agent's `Redactor` + local store; `manthana mine-skills` unchanged.
+- **Server**: `POST /v1/admin/mine-skills {org_id}` (admin) runs `mine_org` over
+  the org's released compactions (already redacted on sync, so `redactor=None`),
+  **k-anonymized** (≥`K_ANON_FLOOR`=4 distinct contributors, names dropped),
+  using the server's own LLM provider; each proposal is **enqueued in the action
+  queue** (`ServerStore.enqueue_action`, status `pending`) for human approval —
+  the v1.5 "auto-draft shared org skills" action, with the maintainer-approval
+  gate as a seam. Verified end-to-end (5 contributors → 1 queued org skill).
+
+### Phase status
+
+- ✅ **Phase 10 — Miner→server**: `manthana-skills` shared package; org mining
+  endpoint behind k-anon + action queue. Green (104 tests).

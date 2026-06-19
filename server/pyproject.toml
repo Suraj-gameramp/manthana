@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"
 dependencies = [
     "manthana-schemas",
+    "manthana-skills",
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "sqlmodel>=0.0.22",

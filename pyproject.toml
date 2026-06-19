@@ -9,11 +9,12 @@ description = "Manthana monorepo workspace (not published)."
 requires-python = ">=3.11"
 
 [tool.uv.workspace]
-members = ["schemas", "collectors", "agent", "server"]
+members = ["schemas", "collectors", "skills", "agent", "server"]
 
 [tool.uv.sources]
 manthana-schemas = { workspace = true }
 manthana-collectors = { workspace = true }
+manthana-skills = { workspace = true }
 manthana = { workspace = true }
 manthana-server = { workspace = true }
 
@@ -37,7 +38,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
-include = ["schemas/src", "agent/src", "collectors/src", "server/src", "tests"]
+include = ["schemas/src", "agent/src", "collectors/src", "skills/src", "server/src", "tests"]
 venvPath = "."
 venv = ".venv"
 

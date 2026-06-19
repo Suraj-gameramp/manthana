@@ -20,6 +20,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from manthana.schemas import CompactionAdapter
+from manthana.skills import mine_org
 from pydantic import BaseModel, ValidationError
 
 from .auth import AuthError, TeamClaims, issue_team_token, verify_team_token
@@ -58,6 +59,10 @@ class RawBody(BaseModel):
 class FounderQueryBody(BaseModel):
     org_id: str
     query: str
+
+
+class MineSkillsBody(BaseModel):
+    org_id: str
 
 
 def create_app(
@@ -148,6 +153,39 @@ def create_app(
             "citations": result.citations,
             "insufficient_data": result.insufficient_data,
         }
+
+    @app.post("/v1/admin/mine-skills")
+    def mine_skills(
+        body: MineSkillsBody, _: Annotated[None, Depends(require_admin)]
+    ) -> dict[str, Any]:
+        # Cross-engineer org mining over released compactions. k-anonymized
+        # (>=K_ANON_FLOOR distinct contributors; names dropped). Compactions are
+        # already redacted on sync, so no redactor is needed here. Proposals are
+        # enqueued for human approval (the action-queue seam) rather than applied.
+        compactions = store.query_compactions(org_id=body.org_id, limit=100_000)
+        proposals = mine_org(compactions, provider=provider)
+        out = []
+        for proposal in proposals:
+            store.enqueue_action(
+                action_id="auto_draft_org_skill",
+                org_id=body.org_id,
+                payload={
+                    "name": proposal.draft.name,
+                    "description": proposal.draft.description,
+                    "skill_md": proposal.skill_md,
+                    "contributor_count": proposal.provenance.contributor_count,
+                    "evidence": proposal.provenance.evidence,
+                },
+            )
+            out.append(
+                {
+                    "name": proposal.draft.name,
+                    "description": proposal.draft.description,
+                    "contributor_count": proposal.provenance.contributor_count,
+                    "evidence": proposal.provenance.evidence,
+                }
+            )
+        return {"proposals": out, "queued": len(out)}
 
     return app
 

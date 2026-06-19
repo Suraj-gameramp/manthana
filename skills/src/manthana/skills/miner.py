@@ -17,8 +17,6 @@ from pathlib import Path
 
 from manthana.schemas import BaseCompaction
 
-from ..llm import LLMProvider
-from ..redaction import Redactor
 from .cluster import (
     DEFAULT_MIN_CLUSTER_SIZE,
     DEFAULT_THRESHOLD,
@@ -28,6 +26,7 @@ from .cluster import (
 )
 from .embed import Embedder, default_embedder
 from .provenance import Provenance, content_hash, make_provenance, render_provenance
+from .provider import LLMProvider, SupportsRedaction
 from .skillmd import SkillDraft, render_skill_md
 from .synthesize import synthesize
 
@@ -49,13 +48,15 @@ class SkillMiner:
         *,
         embedder: Embedder | None = None,
         provider: LLMProvider | None = None,
-        redactor: Redactor | None = None,
+        redactor: SupportsRedaction | None = None,
         threshold: float = DEFAULT_THRESHOLD,
         min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
     ) -> None:
         self.embedder = embedder or default_embedder()
         self.provider = provider
-        self.redactor = redactor or Redactor()
+        # Injected redactor (agent wires its Redactor; the server passes None —
+        # its compactions are already redacted on sync). No default coupling.
+        self.redactor = redactor
         self.threshold = threshold
         self.min_cluster_size = min_cluster_size
 
@@ -79,9 +80,13 @@ class SkillMiner:
         now = now or datetime.now(UTC)
         # Redact compaction free text BEFORE it reaches embeddings, the synthesis
         # prompt, or the skill body — so secrets/PII never enter a mined skill.
-        redacted = [self.redactor.redact_compaction(c) for c in compactions]
+        source = (
+            [self.redactor.redact_compaction(c) for c in compactions]
+            if self.redactor is not None
+            else list(compactions)
+        )
         clusters = cluster_compactions(
-            redacted,
+            source,
             self.embedder,
             threshold=self.threshold,
             min_cluster_size=self.min_cluster_size,
@@ -121,21 +126,6 @@ def write_proposal(proposal: SkillProposal, skills_dir: Path | str) -> Path:
     return target
 
 
-def mine_personal(
-    store: object,
-    *,
-    provider: LLMProvider | None = None,
-    min_sessions: int = 3,
-    embedder: Embedder | None = None,
-) -> list[SkillProposal]:
-    """Mine the engineer's OWN compactions into personal skill proposals."""
-    compactions = store.list_compactions(limit=1_000_000)  # type: ignore[attr-defined]
-    miner = SkillMiner(embedder=embedder, provider=provider)
-    return miner.mine(
-        compactions, min_contributors=1, min_sessions=min_sessions, include_contributors=True
-    )
-
-
 def mine_org(
     compactions: Sequence[BaseCompaction],
     *,
@@ -160,7 +150,6 @@ __all__ = [
     "SkillMiner",
     "SkillProposal",
     "write_proposal",
-    "mine_personal",
     "mine_org",
     "K_ANON_FLOOR",
 ]
