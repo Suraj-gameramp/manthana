@@ -757,3 +757,31 @@ can't exercise model-style output quirks.
 
 - ✅ **Phase 11 — Dashboard control plane**: compactions + skills pages + action
   buttons. The dashboard is now the employee's full GUI.
+
+## 25. Auto-capture daemon (`manthana watch`) — Phase A dogfood
+
+To turn the manual capture button into a continuous flywheel, `manthana watch`
+polls `~/.claude/projects` and ingests new/changed transcripts automatically.
+
+- **`agent/src/manthana/agent/watcher.py` → `watch(store, *, collector, interval,
+  compact, provider, iterations, ingest, compact_fn, sleep, log)`**: stdlib
+  polling loop (no `watchdog`). Tracks `{path: mtime}` from
+  `ClaudeCodeCollector.discover()` and calls `ingest_file` only for new/changed
+  files (incremental + idempotent). First cycle (empty `seen`) catches everything
+  up, then it runs incrementally. Per-file ingest errors are logged and the file
+  is **not** remembered (retried next cycle); a vanished file is forgotten so a
+  recreated path re-ingests. **Capture-only by default** (confirmed decision —
+  no token spend); `compact=True` runs `compact_pending` after a change.
+- **CLI `manthana watch --interval --compact`** (`cli.py`): prints a startup
+  line, runs the loop, clean "stopped" on Ctrl-C.
+- **Reuse:** `ClaudeCodeCollector.discover()`, `capture.ingest_file`,
+  `compact.compact_pending`, `Store.open`. Zero new deps.
+- **Tests** (`tests/test_watcher.py`, 7) — everything injected (tmp projects dir,
+  fake `ingest`/`compact_fn`, no-op/driver `sleep`, bounded `iterations`):
+  first-cycle catch-up, unchanged-skip, new-file pickup, modified-file (os.utime)
+  re-ingest, error isolation + retry, and the `compact` flag on/off. **138 tests.**
+- **Live:** one cycle caught up 216 files → 457 sessions → 33,348 turns on the
+  real store.
+
+This is Phase A part 1. Part 2 (validate) is a quality-review workflow over real
+compactions + mined skills once a few days of data accrue.

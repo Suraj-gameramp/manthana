@@ -50,6 +50,26 @@ def capture() -> None:
 
 
 @app.command()
+def watch(interval: float = 5.0, compact: bool = False) -> None:
+    """Continuously ingest new/changed Claude Code transcripts (Ctrl-C to stop).
+
+    Capture-only by default. --compact also compacts pending Work sessions after
+    each change (runs claude, costs tokens).
+    """
+    from manthana.agent.watcher import watch as run_watch
+
+    store = Store.open()
+    state = "on" if compact else "off"
+    typer.echo(
+        f"watching ~/.claude/projects every {interval}s (compact={state}) — Ctrl-C to stop"
+    )
+    try:
+        run_watch(store, interval=interval, compact=compact, log=typer.echo)
+    except KeyboardInterrupt:
+        typer.echo("\nstopped")
+
+
+@app.command()
 def sessions(limit: int = 20) -> None:
     """List captured sessions (most recent first)."""
     store = Store.open()
