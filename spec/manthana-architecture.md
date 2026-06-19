@@ -717,6 +717,29 @@ To turn it on live:
 `MANTHANA_SERVER_LLM=anthropic ANTHROPIC_API_KEY=sk-... uv run manthana-server serve`
 (install the extra first: `uv pip install "manthana-server[llm]"` / `anthropic`).
 
+## 24. LLM-provider review hardening (2026-06-20)
+
+Review of §23 (23 raw → 13 confirmed). The dominant real issue: a **real
+provider raises** (rate limit / network / auth) and the mock never did, so those
+exceptions propagated unhandled into both founder endpoints as 500s (and could
+surface the raw SDK exception). Fixes (128 tests):
+
+- **Graceful degradation** (`founder.py`): both `provider.complete` calls are now
+  wrapped — parse failure → empty filter (match all); narrative failure →
+  "insufficient data" (rollup kept). Errors are logged, never returned to the
+  client. Covers `/v1/founder/query` **and** `/ui/query`. Regression: a raising
+  provider yields `insufficient_data` with no exception.
+- **`ui_mine` guarded** — org mining degrades to a clean redirect, never 500s the
+  console.
+- **Defensive block parsing** (`llm.py`): `getattr(block, "text", "")` survives a
+  malformed text block.
+- **Config bounds** (`config.py`): `k_anon_floor >= 1` (a non-positive floor would
+  silently disable k-anon) and `1 <= llm_max_tokens <= 100000` (typo guard).
+- **Deferred to v1.5** (decisions log): founder-query **audit log** (#4) and
+  **server-side personal-mode reject** at ingest (#10, defense-in-depth — the
+  agent chokepoint already enforces the invariant). **Rejected:** an `llm_model`
+  whitelist — it would reject valid future models; unknown models now fail-soft.
+
 ### Phase status
 
 - ✅ **Phase 11 — Dashboard control plane**: compactions + skills pages + action

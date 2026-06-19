@@ -15,6 +15,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 import hmac
 import html
+import logging
 from typing import Annotated
 
 from fastapi import Cookie, FastAPI, Form
@@ -25,6 +26,8 @@ from .config import ServerConfig
 from .founder import run_query
 from .llm import LLMProvider
 from .store import ServerStore
+
+_log = logging.getLogger(__name__)
 
 COOKIE = "manthana_admin"
 
@@ -155,18 +158,23 @@ def mount_ui(
     ) -> Response:
         if not _authed(manthana_admin):
             return RedirectResponse(url="/ui/login", status_code=303)
-        compactions = store.query_compactions(org_id=org_id, limit=100_000)
-        for proposal in mine_org(compactions, provider=provider):
-            store.enqueue_action(
-                action_id="auto_draft_org_skill",
-                org_id=org_id,
-                payload={
-                    "name": proposal.draft.name,
-                    "description": proposal.draft.description,
-                    "skill_md": proposal.skill_md,
-                    "contributor_count": proposal.provenance.contributor_count,
-                },
-            )
+        # Mining touches the provider/embedder; degrade to a clean redirect (no
+        # 500 on the admin console) if anything raises.
+        try:
+            compactions = store.query_compactions(org_id=org_id, limit=100_000)
+            for proposal in mine_org(compactions, provider=provider):
+                store.enqueue_action(
+                    action_id="auto_draft_org_skill",
+                    org_id=org_id,
+                    payload={
+                        "name": proposal.draft.name,
+                        "description": proposal.draft.description,
+                        "skill_md": proposal.skill_md,
+                        "contributor_count": proposal.provenance.contributor_count,
+                    },
+                )
+        except Exception:  # noqa: BLE001 - console action degrades, never 500s
+            _log.exception("org skill mining failed for %s", org_id)
         return RedirectResponse(url="/ui", status_code=303)
 
 

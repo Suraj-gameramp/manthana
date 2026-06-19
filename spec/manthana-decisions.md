@@ -223,3 +223,27 @@ sub-buckets below the floor are dropped, so the practical exposure is low.
 **Decision:** v1.5 adds an explicit per-filter contributor-floor check (reject /
 "insufficient" if any applied filter narrows to < k-anon contributors) rather
 than patching the reviewed `founder.py` in the UI pass. Tracked in arch §22.
+
+### LLM-provider review — fixes + deferrals (v1.5 items)
+
+Adversarial review of the real founder-narrative provider (arch §23/§24; 23 raw →
+13 confirmed). Fixed now: provider-exception graceful degradation in `founder.py`
+(both `provider.complete` calls → empty filter / "insufficient data" instead of a
+500 that could surface the SDK exception), `ui_mine` guarded, defensive text-block
+parsing, and config numeric bounds (`k_anon_floor >= 1`, `1 <= llm_max_tokens <=
+100000`).
+
+**Deferred to v1.5 (tracked, not built in this pass):**
+- **Founder-query audit log** (#4): record who queried which org, with which
+  provider, which compaction ids were cited, and surface an `/v1/audit` view.
+  Reuse the existing action-queue/audit seam.
+- **Server-side personal-mode reject** (#10): defense-in-depth — carry `mode` on
+  the compaction to the server and reject `personal` at `ingest_compaction`. The
+  primary invariant already holds at the agent chokepoint
+  (`eligible_for_sync` + `test_personal_mode_invariant.py`); this is belt-and-
+  suspenders, deferred to avoid a broad schema change in the provider pass.
+
+**Rejected:** an `llm_model` whitelist (#9 / critic-3) — hardcoding valid model
+IDs would reject legitimate *future* models (e.g. a new Opus). An unknown model
+now fails the API call, which degrades gracefully via the exception handling
+above. `llm_model` stays free-form + configurable.

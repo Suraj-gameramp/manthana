@@ -96,9 +96,10 @@ class AnthropicProvider:
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-        # Concatenate only text blocks (tool-use / thinking blocks have no .text).
+        # Concatenate only text blocks (tool-use / thinking blocks have no .text);
+        # getattr-default guards a malformed text block missing .text.
         parts = [
-            block.text
+            getattr(block, "text", "")
             for block in message.content
             if getattr(block, "type", None) == "text"
         ]

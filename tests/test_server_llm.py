@@ -70,6 +70,13 @@ def test_anthropic_provider_ignores_non_text_blocks() -> None:
     assert p.complete("x") == "real answer"
 
 
+def test_anthropic_provider_survives_text_block_missing_text_attr() -> None:
+    # A malformed block typed "text" but without a .text attribute must not crash.
+    client = _Client([_Block(None, kind="text"), _Block("ok")])
+    p = AnthropicProvider(model="m", client=client)
+    assert p.complete("x") == "ok"
+
+
 # ── make_provider selection ─────────────────────────────────────────────────
 def _cfg(**kw: Any) -> ServerConfig:
     return ServerConfig(jwt_secret="x" * 40, admin_token="adm", **kw)
@@ -104,6 +111,15 @@ def test_invalid_llm_provider_rejected() -> None:
         _cfg(llm_provider="gpt")
 
 
+def test_config_rejects_out_of_range_numeric_bounds() -> None:
+    with pytest.raises(ValueError):
+        _cfg(llm_max_tokens=0)  # empty narrative
+    with pytest.raises(ValueError):
+        _cfg(llm_max_tokens=10_000_000)  # runaway cost typo
+    with pytest.raises(ValueError):
+        _cfg(k_anon_floor=0)  # would disable the privacy floor
+
+
 # ── integration: a real provider produces a grounded, cited narrative ────────
 def _comp(cid: str, actor: str) -> EngineeringCompaction:
     return EngineeringCompaction(
@@ -122,6 +138,28 @@ def _comp(cid: str, actor: str) -> EngineeringCompaction:
         tier_used="opus",
         released=True,
     )
+
+
+class _BoomProvider:
+    """Raises on every call — stands in for a rate-limited / down Anthropic API."""
+
+    name = "boom"
+
+    def complete(self, prompt: str) -> str:
+        raise RuntimeError("api unavailable: sk-should-never-reach-client")
+
+
+def test_run_query_degrades_gracefully_on_provider_error() -> None:
+    # A provider exception must NOT 500 the endpoint or leak the SDK exception —
+    # it degrades to "insufficient data" (rollup kept, narrative withheld).
+    config = _cfg(k_anon_floor=1)
+    store = ServerStore.open("sqlite://")
+    store.create_org("o1", "Acme")
+    store.ingest_compaction(_comp("c0", "e@x.com"), org_id="o1", team_id="t1")
+    result = run_query(store, config, org_id="o1", query="what shipped?", provider=_BoomProvider())
+    assert result.insufficient_data is True
+    assert result.narrative == "insufficient data"
+    assert result.citations == []
 
 
 def test_founder_query_grounded_with_anthropic_provider() -> None:

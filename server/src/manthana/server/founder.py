@@ -12,6 +12,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from .config import ServerConfig
 from .llm import LLMProvider
 from .store import ServerStore
+
+_log = logging.getLogger(__name__)
 
 INSUFFICIENT = "insufficient data"
 _VALID_OUTCOMES = {"success", "partial", "abandoned"}
@@ -97,7 +100,15 @@ def _extract_json(raw: str) -> dict[str, Any]:
 
 
 def parse_filter(query: str, provider: LLMProvider) -> FounderFilter:
-    data = _extract_json(provider.complete(_PARSE_PROMPT.format(query=query)))
+    # A real provider (Anthropic) can raise (rate limit / network / auth); degrade
+    # to an empty filter (match all) rather than 500 — and never let the raw SDK
+    # exception reach the client.
+    try:
+        raw = provider.complete(_PARSE_PROMPT.format(query=query))
+    except Exception:  # noqa: BLE001 - any provider failure degrades gracefully
+        _log.exception("founder filter parse: provider call failed")
+        return FounderFilter()
+    data = _extract_json(raw)
     try:
         spec = FounderFilter.model_validate(data)
     except ValidationError:
@@ -175,9 +186,17 @@ def run_query(
         {"id": c.id, "project": c.project, "intent": c.task_intent, "outcome": str(c.outcome)}
         for c in visible
     ]
-    narrative = provider.complete(
-        _NARRATIVE_PROMPT.format(rollup=json.dumps(rollup.__dict__), compactions=json.dumps(brief))
-    ).strip()
+    try:
+        narrative = provider.complete(
+            _NARRATIVE_PROMPT.format(
+                rollup=json.dumps(rollup.__dict__), compactions=json.dumps(brief)
+            )
+        ).strip()
+    except Exception:  # noqa: BLE001 - provider failure → withhold narrative, keep rollup
+        _log.exception("founder narrative: provider call failed")
+        return FounderResult(
+            filter=spec, rollup=rollup, narrative=INSUFFICIENT, citations=[], insufficient_data=True
+        )
 
     cited = set(_CITE_RE.findall(narrative))
     citations = [c.id for c in visible if c.id in cited]

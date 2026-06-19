@@ -40,6 +40,14 @@ class ServerConfig:
             raise ValueError(
                 f"llm_provider must be 'mock' or 'anthropic', got {self.llm_provider!r}"
             )
+        # A non-positive k-anon floor would silently disable the privacy floor; a
+        # non-positive/absurd max_tokens is a config typo (0 → empty narrative,
+        # huge → runaway cost). Note: llm_model is intentionally NOT whitelisted —
+        # hardcoding model IDs would reject valid future models.
+        if self.k_anon_floor < 1:
+            raise ValueError(f"k_anon_floor must be >= 1, got {self.k_anon_floor}")
+        if not 1 <= self.llm_max_tokens <= 100_000:
+            raise ValueError(f"llm_max_tokens must be 1..100000, got {self.llm_max_tokens}")
 
     @classmethod
     def from_env(cls) -> ServerConfig:
