@@ -213,3 +213,13 @@ The decisions above specify CLI-shelling (`claude -p` / `codex exec`) for the
 but the server has no engineer Claude account. **Decision:** dev uses a mock
 provider; **v1.5 the org provisions a server-side API key** behind its own
 `LLMProvider` implementation. Tracked in `manthana-architecture.md` §9.
+### Open item added — per-filter k-anonymity in the founder query (v1.5)
+
+The Phase-11/founder-UI adversarial review (arch §22) flagged that `founder.py`
+applies the global k-anon floor + per-project/per-outcome sub-bucket suppression,
+but does not enforce a contributor floor on *every* active filter combination.
+Today an `actor` filter collapses to one contributor → "insufficient", and
+sub-buckets below the floor are dropped, so the practical exposure is low.
+**Decision:** v1.5 adds an explicit per-filter contributor-floor check (reject /
+"insufficient" if any applied filter narrows to < k-anon contributors) rather
+than patching the reviewed `founder.py` in the UI pass. Tracked in arch §22.

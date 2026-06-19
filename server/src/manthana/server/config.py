@@ -23,6 +23,15 @@ class ServerConfig:
     object_store: str = "memory"  # "memory" | "s3"
     s3_bucket: str | None = None
 
+    def __post_init__(self) -> None:
+        # An empty admin token or JWT secret is an auth bypass: hmac.compare_digest
+        # ("", "") is True, so an empty cookie/header would authenticate. Reject it
+        # (the dev defaults above are non-empty; only an explicit "" override trips this).
+        if not self.admin_token:
+            raise ValueError("admin_token must not be empty (set MANTHANA_SERVER_ADMIN_TOKEN)")
+        if not self.jwt_secret:
+            raise ValueError("jwt_secret must not be empty (set MANTHANA_SERVER_JWT_SECRET)")
+
     @classmethod
     def from_env(cls) -> ServerConfig:
         env = os.environ.get

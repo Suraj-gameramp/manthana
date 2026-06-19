@@ -657,6 +657,35 @@ The dashboard's **Compact** button used to block the request for the whole
   state deterministic — async-completes, shows "compacting…" then "✓ compacted",
   and a double-click does not start a second compaction. **117 tests green.**
 
+## 22. Adversarial review hardening — founder UI + async compaction (2026-06-19)
+
+A review workflow (4 dimensions → per-finding adversarial verify → completeness
+critic; 21 agents, 16 raw → 10 confirmed) ran over `ui.py`, `dashboard/app.py`,
+`server/store.py`, `engine.py`. Fixes applied (119 tests; verified live):
+
+- **Silent daemon-thread failure** (dashboard async compaction): `_run_compaction`
+  now `except Exception: _log.exception(...)` before the `finally` discard, so a
+  failed background compaction is logged instead of vanishing. Regression test
+  drives a raising provider and asserts the log + clean in-progress teardown.
+  (The flagged "TOCTOU double-write" was downgraded — the id is removed only
+  *after* `compact_session` returns/raises, so there is no concurrent double-write;
+  a re-click after a *failure* is intended retry.)
+- **Empty-secret auth bypass** (`config.py`): `hmac.compare_digest("", "")` is
+  `True`, so an empty `admin_token`/`jwt_secret` would authenticate. `ServerConfig.
+  __post_init__` now rejects empty values (dev defaults are non-empty).
+- **`count_compactions`** now filters `released == True`, matching
+  `query_compactions` (consistent counts even if an unreleased row ever lands).
+- **Logout is POST** (was GET) — state mutation must not be GET-triggerable; the
+  nav uses a form button. Verified live: `GET /ui/logout` → 405, `POST` → 303.
+- **Cookie scoping**: `set_cookie`/`delete_cookie` use `path="/ui"` + httponly.
+- **`<title>` escaping** in both `_page`s (`_e(title)`) — defense-in-depth (titles
+  are literals today).
+- **Tracked, not changed:** the critic flagged per-filter k-anon enumeration in
+  the *pre-existing* `founder.py`. Current code already suppresses per-project /
+  per-outcome sub-buckets below the floor and collapses an `actor` filter to one
+  contributor → "insufficient". Logged in `manthana-decisions.md` as a v1.5
+  hardening (per-filter contributor floor) rather than touched in this pass.
+
 ### Phase status
 
 - ✅ **Phase 11 — Dashboard control plane**: compactions + skills pages + action

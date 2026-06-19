@@ -45,9 +45,11 @@ def _e(value: object) -> str:
 
 def _page(title: str, body: str) -> str:
     return (
-        f"<!doctype html><html><head><meta charset='utf-8'><title>Manthana — {title}</title>"
+        f"<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>Manthana — {_e(title)}</title>"
         f"{_STYLE}</head><body><h1>Manthana — Founder Console</h1>"
-        "<nav><a href='/ui'>Console</a><a href='/ui/logout'>Log out</a>"
+        "<nav><a href='/ui'>Console</a>"
+        "<form method='post' action='/ui/logout'><button>Log out</button></form> "
         "<a href='/docs'>API</a></nav>"
         f"{body}</body></html>"
     )
@@ -78,13 +80,16 @@ def mount_ui(
         if not hmac.compare_digest(token, config.admin_token):
             return HTMLResponse(_login_page(error=True), status_code=401)
         resp = RedirectResponse(url="/ui", status_code=303)
-        resp.set_cookie(COOKIE, token, httponly=True, samesite="lax")
+        # Scope the cookie to the console routes; httponly keeps it out of JS.
+        resp.set_cookie(COOKIE, token, httponly=True, samesite="lax", path="/ui")
         return resp
 
-    @app.get("/ui/logout")
+    @app.post("/ui/logout")
     def logout() -> Response:
+        # POST (not GET): logout mutates auth state, so it must not be triggerable
+        # by a GET (link prefetch / cross-site image).
         resp = RedirectResponse(url="/ui/login", status_code=303)
-        resp.delete_cookie(COOKIE)
+        resp.delete_cookie(COOKIE, path="/ui")  # path must match set_cookie to clear
         return resp
 
     @app.get("/ui", response_class=HTMLResponse)

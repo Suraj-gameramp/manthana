@@ -123,7 +123,9 @@ class ServerStore:
     def count_compactions(self, org_id: str) -> int:
         with DBSession(self._engine) as db:
             rows = db.exec(
-                select(ReleasedCompactionRow.id).where(ReleasedCompactionRow.org_id == org_id)
+                select(ReleasedCompactionRow.id)
+                .where(ReleasedCompactionRow.org_id == org_id)
+                .where(ReleasedCompactionRow.released == True)  # noqa: E712 - SQL boolean column
             )
             return len(list(rows))
 

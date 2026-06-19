@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ from manthana.agent.llm import LLMProvider
 from manthana.agent.skillminer import mine_personal, write_proposal
 from manthana.agent.store import Store
 from manthana.schemas import BaseCompaction, Mode, Session
+
+_log = logging.getLogger(__name__)
 
 _DEFAULT_SKILLS_DIR = Path.home() / ".claude" / "skills" / "personal"
 
@@ -56,7 +59,7 @@ def _page(title: str, body: str, *, refresh: int = 0) -> str:
     # so "⏳ compacting…" flips to "✓ compacted" without a manual reload).
     refresh_tag = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh > 0 else ""
     return (
-        f"<!doctype html><html><head><meta charset='utf-8'><title>Manthana — {title}</title>"
+        f"<!doctype html><html><head><meta charset='utf-8'><title>Manthana — {_e(title)}</title>"
         f"{refresh_tag}{_HTMX}{_STYLE}</head><body>"
         "<h1>Manthana</h1>"
         "<nav><a href='/'>Sessions</a><a href='/compactions'>Compactions</a>"
@@ -170,6 +173,11 @@ def create_app(
     def _run_compaction(session_id: str) -> None:
         try:
             compact_session(store, session_id, provider=provider)
+        except Exception:
+            # Background daemon thread: an uncaught exception here is invisible to
+            # the request that started it, so log it explicitly (else a failed
+            # compaction silently reverts to the "compact" button with no trace).
+            _log.exception("background compaction failed for session %s", session_id)
         finally:
             with compacting_lock:
                 compacting.discard(session_id)

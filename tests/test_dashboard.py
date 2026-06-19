@@ -127,6 +127,25 @@ def test_compact_shows_in_progress_then_completes(
     assert "✓ compacted" in client.get("/").text
 
 
+def test_failed_compaction_logs_and_cleans_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    client, store = _build(tmp_path)
+
+    def boom(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(dash_app, "compact_session", boom)
+    with caplog.at_level(logging.ERROR):
+        client.post("/session/s1/compact", follow_redirects=False)
+        assert _wait_for(lambda: "compacting" not in client.get("/").text)
+    assert any("background compaction failed" in r.getMessage() for r in caplog.records)
+    assert store.get_compaction("comp-s1") is None  # nothing written on failure
+    assert "compact" in client.get("/").text  # in-progress set cleaned up → button back
+
+
 def test_double_compact_does_not_double_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

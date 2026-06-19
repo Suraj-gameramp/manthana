@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from manthana.schemas import EngineeringCompaction, Outcome, Surface
 from manthana.server import ServerConfig, ServerStore, create_app
@@ -136,7 +137,17 @@ def test_logout_clears_cookie() -> None:
     _seed(store, 1)
     _login(client)
     assert client.get("/ui").status_code == 200
-    out = client.get("/ui/logout")
+    out = client.post("/ui/logout")  # logout is POST (state mutation)
     assert out.status_code == 303 and out.headers["location"] == "/ui/login"
     client.cookies.clear()  # browser would drop the deleted cookie
     assert client.get("/ui").status_code == 303  # back to gated
+
+
+# ── config hardening (auth-bypass guard) ───────────────────────────────────
+def test_empty_admin_token_or_secret_is_rejected() -> None:
+    # hmac.compare_digest("", "") is True, so an empty token/secret is an auth
+    # bypass — ServerConfig must refuse to construct.
+    with pytest.raises(ValueError):
+        ServerConfig(jwt_secret="x" * 40, admin_token="")
+    with pytest.raises(ValueError):
+        ServerConfig(jwt_secret="", admin_token="adm")
