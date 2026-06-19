@@ -22,11 +22,14 @@ def mine_personal(
     *,
     provider: LLMProvider | None = None,
     min_sessions: int = 3,
+    threshold: float = 0.75,
     embedder: Embedder | None = None,
 ) -> list[SkillProposal]:
     """Mine the engineer's OWN compactions into personal skill proposals."""
     compactions = store.list_compactions(limit=1_000_000)
-    miner = SkillMiner(embedder=embedder, provider=provider, redactor=Redactor())
+    miner = SkillMiner(
+        embedder=embedder, provider=provider, redactor=Redactor(), threshold=threshold
+    )
     return miner.mine(
         compactions, min_contributors=1, min_sessions=min_sessions, include_contributors=True
     )

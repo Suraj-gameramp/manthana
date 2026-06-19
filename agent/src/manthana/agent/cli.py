@@ -73,7 +73,7 @@ def mode(session_id: str, value: str) -> None:
 
 
 @app.command()
-def compact(session_id: str = "") -> None:
+def compact(session_id: str = typer.Argument(default="")) -> None:
     """Compact a session (or all pending Work sessions if no id is given).
 
     Uses the engineer's own model access (claude -p / codex exec).
@@ -89,6 +89,16 @@ def compact(session_id: str = "") -> None:
         return
     results = compact_pending(store)
     typer.echo(f"compacted {len(results)} pending session(s)")
+
+
+@app.command()
+def release(compaction_id: str = typer.Argument(default=...)) -> None:
+    """Mark a compaction released — eligible to sync to the org server."""
+    from datetime import UTC, datetime
+
+    store = Store.open()
+    ok = store.mark_released(compaction_id, released=True, released_at=datetime.now(UTC))
+    typer.echo(f"released {compaction_id}" if ok else f"no such compaction: {compaction_id}")
 
 
 @app.command()
@@ -139,17 +149,18 @@ def sync(raw: bool = False) -> None:
 
 
 @app.command(name="mine-skills")
-def mine_skills(min_sessions: int = 3, write: bool = False) -> None:
+def mine_skills(min_sessions: int = 3, threshold: float = 0.75, write: bool = False) -> None:
     """Mine recurring patterns in your own compactions into proposed SKILL.md files.
 
     Drafts are deterministic by default (no token spend / works offline). Pass
-    --write to draft them under ~/.claude/skills/personal/.
+    --write to draft them under ~/.claude/skills/personal/. Lower --threshold
+    (e.g. 0.6) to cluster more loosely when using the offline embedder.
     """
     from pathlib import Path
 
     from manthana.agent.skillminer import mine_personal, write_proposal
 
-    proposals = mine_personal(Store.open(), min_sessions=min_sessions)
+    proposals = mine_personal(Store.open(), min_sessions=min_sessions, threshold=threshold)
     for p in proposals:
         prov = p.provenance
         typer.echo(
