@@ -23,6 +23,9 @@ NAME_RE = re.compile(r"^[a-z0-9-]+$")
 _RESERVED = ("anthropic", "claude")
 _XML_TAG = re.compile(r"<[^>]+>")
 _NON_SLUG = re.compile(r"[^a-z0-9]+")
+# C0/C1 control chars (incl. NUL, BEL, VT, FF, CR) — break YAML or mutate silently.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+_FALLBACK_NAME = "mined-skill"
 
 
 @dataclass
@@ -55,6 +58,8 @@ def validate_description(description: str) -> list[str]:
         errors.append(f"description exceeds {DESCRIPTION_MAX} chars")
     if _XML_TAG.search(description):
         errors.append("description may not contain XML tags")
+    if _CONTROL.search(description):
+        errors.append("description may not contain control characters")
     return errors
 
 
@@ -66,20 +71,26 @@ def validate_draft(draft: SkillDraft) -> list[str]:
     ]
 
 
-def slugify_name(text: str, fallback: str = "mined-skill") -> str:
-    """Coerce arbitrary text into a valid skill name."""
+def slugify_name(text: str, fallback: str = _FALLBACK_NAME) -> str:
+    """Coerce arbitrary text into a valid skill name (self-guaranteeing output)."""
     slug = _NON_SLUG.sub("-", text.lower()).strip("-")
-    for word in _RESERVED:
-        slug = slug.replace(word, "")
+    # Substring removal can re-form a reserved word (e.g. 'antclaudehropic' ->
+    # 'anthropic'), so iterate to a fixpoint.
+    while any(word in slug for word in _RESERVED):
+        for word in _RESERVED:
+            slug = slug.replace(word, "")
     slug = re.sub(r"-+", "-", slug).strip("-")[:NAME_MAX].strip("-")
     return slug or fallback
 
 
 def repair_draft(draft: SkillDraft) -> SkillDraft:
-    """Best-effort coercion of a (possibly LLM-produced) draft into a valid one:
-    slugify a bad name, strip XML tags + truncate an over-long description."""
+    """Coerce a (possibly LLM-produced) draft toward validity: slug a bad name,
+    strip XML tags + control chars, truncate an over-long description. The name is
+    guaranteed valid (hard fallback if slugify still fails)."""
     name = draft.name if not validate_name(draft.name) else slugify_name(draft.name)
-    description = _XML_TAG.sub("", draft.description).strip()
+    if validate_name(name):  # belt: slugify output must be valid, else hard fallback
+        name = _FALLBACK_NAME
+    description = _CONTROL.sub("", _XML_TAG.sub("", draft.description)).strip()
     if len(description) > DESCRIPTION_MAX:
         description = description[: DESCRIPTION_MAX - 1].rstrip() + "…"
     return SkillDraft(name=name, description=description, body=draft.body)

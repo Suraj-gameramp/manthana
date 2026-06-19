@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from typing import Protocol, runtime_checkable
@@ -66,8 +67,11 @@ class HashingEmbedder:
             for token in _TOKEN_RE.findall(text.lower()):
                 if len(token) < 2:
                     continue
-                # stable per-token bucket (not Python's salted hash)
-                bucket = int.from_bytes(token.encode("utf-8"), "little") % self.dim
+                # Stable bucket from a hash of the WHOLE token (blake2b, not
+                # Python's salted hash). Hashing the raw bytes would collapse to
+                # the first byte, so distinct tokens must hash distinctly.
+                digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+                bucket = int.from_bytes(digest, "big") % self.dim
                 vec[bucket] += 1.0
             out.append(_l2_normalize(vec))
         return out

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .cluster import CompactionCluster, cluster_compactions, community_detection, recurring
 from .embed import Embedder, HashingEmbedder, default_embedder
-from .miner import SkillMiner, SkillProposal, mine_personal, write_proposal
+from .miner import K_ANON_FLOOR, SkillMiner, SkillProposal, mine_org, mine_personal, write_proposal
 from .provenance import Provenance, make_provenance
 from .skillmd import SkillDraft, render_skill_md, validate_draft
 from .synthesize import synthesize
@@ -21,7 +21,9 @@ __all__ = [
     "SkillMiner",
     "SkillProposal",
     "mine_personal",
+    "mine_org",
     "write_proposal",
+    "K_ANON_FLOOR",
     "cluster_compactions",
     "community_detection",
     "recurring",

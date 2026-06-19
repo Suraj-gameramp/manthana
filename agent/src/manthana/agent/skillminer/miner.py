@@ -18,6 +18,7 @@ from pathlib import Path
 from manthana.schemas import BaseCompaction
 
 from ..llm import LLMProvider
+from ..redaction import Redactor
 from .cluster import (
     DEFAULT_MIN_CLUSTER_SIZE,
     DEFAULT_THRESHOLD,
@@ -26,9 +27,12 @@ from .cluster import (
     recurring,
 )
 from .embed import Embedder, default_embedder
-from .provenance import Provenance, make_provenance, render_provenance
+from .provenance import Provenance, content_hash, make_provenance, render_provenance
 from .skillmd import SkillDraft, render_skill_md
 from .synthesize import synthesize
+
+# k-anonymity floor for org-level cross-engineer mining (decisions doc).
+K_ANON_FLOOR = 4
 
 
 @dataclass
@@ -45,11 +49,13 @@ class SkillMiner:
         *,
         embedder: Embedder | None = None,
         provider: LLMProvider | None = None,
+        redactor: Redactor | None = None,
         threshold: float = DEFAULT_THRESHOLD,
         min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
     ) -> None:
         self.embedder = embedder or default_embedder()
         self.provider = provider
+        self.redactor = redactor or Redactor()
         self.threshold = threshold
         self.min_cluster_size = min_cluster_size
 
@@ -62,9 +68,20 @@ class SkillMiner:
         include_contributors: bool = True,
         now: datetime | None = None,
     ) -> list[SkillProposal]:
+        # Privacy invariant: contributor names may only be retained for
+        # single-contributor (personal) mining. Any multi-contributor mining must
+        # be k-anonymized (include_contributors=False).
+        if include_contributors and min_contributors > 1:
+            raise ValueError(
+                "include_contributors=True requires min_contributors == 1 (personal scope); "
+                "multi-contributor mining must set include_contributors=False"
+            )
         now = now or datetime.now(UTC)
+        # Redact compaction free text BEFORE it reaches embeddings, the synthesis
+        # prompt, or the skill body — so secrets/PII never enter a mined skill.
+        redacted = [self.redactor.redact_compaction(c) for c in compactions]
         clusters = cluster_compactions(
-            compactions,
+            redacted,
             self.embedder,
             threshold=self.threshold,
             min_cluster_size=self.min_cluster_size,
@@ -83,8 +100,21 @@ class SkillMiner:
 
 
 def write_proposal(proposal: SkillProposal, skills_dir: Path | str) -> Path:
-    """Write ``<skills_dir>/<name>/{SKILL.md,provenance.json}``; return the dir."""
-    target = Path(skills_dir) / proposal.draft.name
+    """Write ``<skills_dir>/<name>/{SKILL.md,provenance.json}``; return the dir.
+
+    Collision-safe: if a different skill already occupies ``<name>``, a numeric
+    suffix is used (``<name>-2``…) so proposals never silently clobber each other;
+    an identical existing skill (same content hash) is left as-is (idempotent).
+    """
+    base = Path(skills_dir)
+    name = proposal.draft.name
+    target = base / name
+    suffix = 1
+    while (target / "SKILL.md").exists():
+        if content_hash((target / "SKILL.md").read_text()) == proposal.provenance.content_hash:
+            return target  # identical content already written
+        suffix += 1
+        target = base / f"{name}-{suffix}"
     target.mkdir(parents=True, exist_ok=True)
     (target / "SKILL.md").write_text(proposal.skill_md)
     (target / "provenance.json").write_text(render_provenance(proposal.provenance))
@@ -106,4 +136,31 @@ def mine_personal(
     )
 
 
-__all__ = ["SkillMiner", "SkillProposal", "write_proposal", "mine_personal"]
+def mine_org(
+    compactions: Sequence[BaseCompaction],
+    *,
+    provider: LLMProvider | None = None,
+    embedder: Embedder | None = None,
+    min_contributors: int = K_ANON_FLOOR,
+    now: datetime | None = None,
+) -> list[SkillProposal]:
+    """Cross-engineer org mining: k-anonymized (>=K_ANON_FLOOR distinct
+    contributors, contributor names dropped). The safe org entry point."""
+    miner = SkillMiner(embedder=embedder, provider=provider)
+    return miner.mine(
+        compactions,
+        min_contributors=max(min_contributors, K_ANON_FLOOR),
+        min_sessions=1,
+        include_contributors=False,
+        now=now,
+    )
+
+
+__all__ = [
+    "SkillMiner",
+    "SkillProposal",
+    "write_proposal",
+    "mine_personal",
+    "mine_org",
+    "K_ANON_FLOOR",
+]

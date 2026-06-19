@@ -187,3 +187,99 @@ def test_miner_proposes_and_writes_skill(tmp_path: Path) -> None:
     out = write_proposal(p, tmp_path)
     assert (out / "SKILL.md").read_text().startswith("---\n")
     assert json.loads((out / "provenance.json").read_text())["session_count"] == 3
+
+
+# ── review fixes (regressions) ────────────────────────────────────────────
+def test_embedder_uses_full_token_not_first_byte() -> None:
+    e = HashingEmbedder()
+    a, b = e.embed(["deploy the docker daemon", "debug that data dump"])  # share no real tokens
+    assert cosine(a, b) < 0.5
+    c, d = e.embed(["kubernetes rollout", "rollout kubernetes"])  # same tokens
+    assert cosine(c, d) > 0.99
+
+
+def test_slugify_cannot_reconstruct_reserved_word() -> None:
+    name = slugify_name("antclaudehropic")  # removing 'claude' would re-form 'anthropic'
+    assert validate_name(name) == []
+    assert "anthropic" not in name and "claude" not in name
+
+
+def test_control_chars_rejected_and_stripped() -> None:
+    assert validate_description("bad\x00desc")  # rejected
+    repaired = repair_draft(SkillDraft("ok-name", "clean\x00desc\x07more", "body"))
+    assert "\x00" not in repaired.description and "\x07" not in repaired.description
+    assert validate_description(repaired.description) == []
+
+
+def test_synthesize_null_fields_fall_back() -> None:
+    draft = synthesize(_cluster(), MockProvider('{"name":null,"description":null,"body":null}'))
+    assert validate_draft(draft) == []
+    assert draft.name != "none"  # deterministic fallback, not coerced "None"
+
+
+def test_extract_json_prefers_real_answer_after_prose_example() -> None:
+    real = '{"name":"real-skill","description":"does X; use when Y","body":"b"}'
+    draft = synthesize(_cluster(), MockProvider(f'Example: {{"foo": 1}}\nHere it is: {real}'))
+    assert draft.name == "real-skill"
+
+
+def test_write_proposal_collision_does_not_clobber(tmp_path: Path) -> None:
+    from manthana.agent.skillminer.miner import SkillProposal
+
+    cl = _cluster()
+    d1 = SkillDraft("dup-skill", "desc one; use when a", "body one")
+    d2 = SkillDraft("dup-skill", "desc two; use when b", "body two")
+    md1, md2 = render_skill_md(d1), render_skill_md(d2)
+    p1 = SkillProposal(d1, md1, make_provenance(cl, md1, now=_T0), cl)
+    p2 = SkillProposal(d2, md2, make_provenance(cl, md2, now=_T0), cl)
+    t1 = write_proposal(p1, tmp_path)
+    t2 = write_proposal(p2, tmp_path)
+    assert t1.name == "dup-skill" and t2.name == "dup-skill-2"  # no clobber
+    assert write_proposal(p1, tmp_path) == t1  # idempotent (same content hash)
+
+
+def test_mine_rejects_unsafe_contributor_disclosure() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        SkillMiner(embedder=HashingEmbedder()).mine(
+            [_comp("c1", "s1", "e", "x")], min_contributors=2, include_contributors=True
+        )
+
+
+def test_mine_org_is_k_anonymized() -> None:
+    from manthana.agent.skillminer import mine_org
+
+    comps = [_comp(f"c{i}", f"s{i}", f"e{i}@x.com", "fix flaky pytest timeout") for i in range(4)]
+    proposals = mine_org(comps, now=_T0)
+    assert len(proposals) == 1
+    assert proposals[0].provenance.contributor_count == 4
+    assert proposals[0].provenance.contributors is None  # names dropped (k-anon)
+
+
+def test_provenance_validation_is_strict() -> None:
+    from dataclasses import replace
+
+    from manthana.agent.skillminer.provenance import validate_provenance
+
+    cl = _cluster()
+    good = make_provenance(cl, render_skill_md(fallback_draft(cl)), now=_T0)
+    assert validate_provenance(good) == []
+    assert validate_provenance(replace(good, evidence=[]))  # empty evidence
+    assert validate_provenance(replace(good, content_hash="nope"))  # bad hash prefix
+    # contributor_count is 1 (one actor); a 2-name list must be flagged as a mismatch
+    assert validate_provenance(replace(good, contributors=["a", "b"]))
+
+
+def test_miner_redacts_secrets_from_mined_skill() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    comps = [
+        _comp(f"c{i}", f"s{i}", "eng", f"deploy service with key {secret}", approach="ship it")
+        for i in range(3)
+    ]
+    proposals = SkillMiner(embedder=HashingEmbedder(), provider=None, threshold=0.5).mine(
+        comps, min_sessions=3, now=_T0
+    )
+    assert len(proposals) == 1
+    blob = proposals[0].skill_md
+    assert secret not in blob  # redacted before it reached the skill body/description

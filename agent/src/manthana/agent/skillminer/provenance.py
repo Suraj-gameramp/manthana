@@ -55,6 +55,14 @@ def validate_provenance(record: Provenance) -> list[str]:
         errors.append("created_at must be ISO-8601")
     if not (0.0 <= record.confidence <= 1.0):
         errors.append("confidence must be between 0 and 1")
+    if record.contributor_count < 0 or record.session_count < 0:
+        errors.append("contributor_count and session_count must be >= 0")
+    if not record.evidence:
+        errors.append("evidence must be non-empty")
+    if not record.content_hash.startswith("sha256:"):
+        errors.append("content_hash must be a sha256: digest")
+    if record.contributors is not None and len(record.contributors) != record.contributor_count:
+        errors.append("contributor_count must match len(contributors)")
     return errors
 
 

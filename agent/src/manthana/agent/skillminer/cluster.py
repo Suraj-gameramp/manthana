@@ -83,22 +83,29 @@ def default_text_of(compaction: BaseCompaction) -> str:
     return f"{compaction.task_intent} {compaction.approach}".strip()
 
 
+DEFAULT_MAX_ITEMS = 2000  # community_detection is O(n^2); cap to bound time/memory
+
+
 def cluster_compactions(
     compactions: Sequence[BaseCompaction],
     embedder: Embedder,
     *,
     threshold: float = DEFAULT_THRESHOLD,
     min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
+    max_items: int = DEFAULT_MAX_ITEMS,
     text_of: Callable[[BaseCompaction], str] = default_text_of,
 ) -> list[CompactionCluster]:
     if not compactions:
         return []
-    embeddings = embedder.embed([text_of(c) for c in compactions])
+    # community_detection builds a dense n*n similarity matrix; cap n so a huge
+    # store can't OOM/hang. Inputs are most-recent-first, so we keep the newest.
+    items = list(compactions)[:max_items]
+    embeddings = embedder.embed([text_of(c) for c in items])
     clusters: list[CompactionCluster] = []
     for indices in community_detection(
         embeddings, threshold=threshold, min_community_size=min_cluster_size
     ):
-        members = [compactions[i] for i in indices]
+        members = [items[i] for i in indices]
         clusters.append(
             CompactionCluster(
                 compactions=members,

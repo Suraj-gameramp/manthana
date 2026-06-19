@@ -51,25 +51,41 @@ def _examples_json(cluster: CompactionCluster) -> str:
     )
 
 
+def _s(value: Any) -> str:
+    """Coerce a JSON field to str only if it really is one (null/number/dict -> '')."""
+    return value if isinstance(value, str) else ""
+
+
 def _extract_json(raw: str) -> dict[str, Any]:
-    text = raw.strip()
+    text = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         value = json.loads(text)
         if isinstance(value, dict):
             return value
     except json.JSONDecodeError:
         pass
+    # Collect ALL top-level dicts; prefer the one that looks like the answer
+    # (has 'description'), else the last (a trailing real answer beats a prose
+    # example that appears first).
     decoder = json.JSONDecoder()
-    for index, char in enumerate(text):
-        if char != "{":
+    dicts: list[dict[str, Any]] = []
+    index = 0
+    while index < len(text):
+        if text[index] != "{":
+            index += 1
             continue
         try:
-            value, _end = decoder.raw_decode(text[index:])
+            value, end = decoder.raw_decode(text[index:])
         except json.JSONDecodeError:
+            index += 1
             continue
         if isinstance(value, dict):
-            return value
-    return {}
+            dicts.append(value)
+        index += end
+    for candidate in reversed(dicts):
+        if "description" in candidate:
+            return candidate
+    return dicts[-1] if dicts else {}
 
 
 def fallback_draft(cluster: CompactionCluster) -> SkillDraft:
@@ -109,9 +125,9 @@ def synthesize(
         return fallback_draft(cluster)
     draft = repair_draft(
         SkillDraft(
-            name=str(data.get("name", "")),
-            description=str(data.get("description", "")),
-            body=str(data.get("body", "")),
+            name=_s(data.get("name")),
+            description=_s(data.get("description")),
+            body=_s(data.get("body")),
         )
     )
     if validate_draft(draft):  # unsalvageable (e.g. empty description/body)

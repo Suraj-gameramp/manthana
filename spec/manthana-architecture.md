@@ -522,3 +522,33 @@ are decisions-doc choices, not independently verified; validate on real corpus.
 - ✅ **Phase 9 — Skill miner v0**: embed/cluster/synthesize/validate/provenance,
   CLI, optional bge-large extra. Green (91 tests). Org-level cross-engineer mining
   (pgvector, ≥4-contributor k-anon) reuses this core — deferred to the v1.5 action.
+
+## 17. Skill miner review hardening (2026-06-19)
+
+A 2-reviewer adversarial pass confirmed 10 issues (all real); fixed with
+regressions in `tests/test_skillminer.py`:
+
+- **[high] Embedder bug** — `HashingEmbedder` collapsed each token to its first
+  byte (cosine 1.0 for unrelated texts, breaking the default offline clustering);
+  now hashes the whole token (blake2b).
+- **[high] Invalid SKILL.md** — control chars in a description (NUL/BEL/CR…) broke
+  YAML; now stripped + rejected by `validate_description`.
+- **[high] Reserved-word slug** — `slugify_name` could re-form `anthropic`; now
+  removes reserved words to a fixpoint and `repair_draft` hard-falls-back to a
+  guaranteed-valid name.
+- **[high] Null-field garbage** — `str(None)` produced a kept "none" skill; a
+  type-checked coercion now forces the deterministic fallback.
+- **[med] Content redaction** — the miner now redacts compaction free text
+  (`Redactor.redact_compaction`) BEFORE it reaches embeddings, the synthesis
+  prompt, or the skill body, so secrets/PII never enter a mined skill.
+- **[med] k-anon entry point** — `mine()` forbids `include_contributors=True`
+  with `min_contributors>1`; `mine_org()` hardcodes the ≥`K_ANON_FLOOR`(=4)
+  contributor floor + drops names.
+- **[med] JSON extraction** — prefers the real answer (last dict / the one with a
+  `description`) over a prose example, after stripping ```json fences.
+- **[med] Write collisions** — `write_proposal` suffixes (`name-2`…) instead of
+  clobbering, idempotent on identical content.
+- **[low] O(n²) cap** — clustering caps to the most-recent `max_items` (2000) so a
+  large store can't OOM.
+- **[low] Provenance validation** — now also checks non-negative counts,
+  non-empty evidence, `sha256:` hash, and contributor count↔names consistency.
