@@ -943,4 +943,4 @@ employee only touches the dashboard.
     actor-resolution precedence, `sync --check` read-only.
 - **Deferred (noted):** server-side rate-limiting on auto-sync; rejecting dev-default
   secrets in prod; tighter SyncError text. The critic's ".env is tracked" flag is a
-  false alarm — `.env` is gitignored (verified). **163 tests green.**
+  false alarm — `.env` is gitignored (verified). **161 tests green.**
