@@ -1022,3 +1022,43 @@ egress, intentional prompt-injection, UTC assumption). Fixes (185 tests):
 - dashboard `/optimize/tune`: runs in a **daemon thread** + logs the result
   (non-blocking, no silent failure).
 - CLI `optimize`: validates `--port` (1-65535).
+
+## 29. Reuse Claude's compaction summaries + cheapest-first + proactive Optimize
+
+Claude Code auto-compacts heavy sessions (`isCompactSummary`). Manthana now reuses
+them instead of re-summarizing from scratch (the user's manual, token-heavy step).
+In the user's data, ~5 sessions carry summaries (two compacted 5×, one boundary
+`preTokens` ~1,004,684).
+
+- **Capture** (`collectors/claude_code.py`): `read()` captures the **newest**
+  `isCompactSummary` + `compact_boundary` meta (trigger/preTokens) and **skips both
+  from turns** (no more giant duplicate turn); `read_summary()` is a cheap scan
+  (string pre-filter before json). `FileMeta.compact_summary`; `Session.
+  has_compact_summary` (set by sessionize/ingest) makes summarized sessions
+  discoverable without re-reading.
+- **Cheaper compaction** (`compactor/prompt.py` + `compactor.py` + `compact.py`):
+  `build_prompt(claude_summary=)` feeds **summary + last ~40 turns** instead of the
+  whole transcript (huge cut on the 1M-token monsters); compactions are tagged
+  `source` ("full" | "claude_summary") + `prompt_version "-summary"`;
+  `compact_session` reads the summary on demand when flagged.
+- **Auto-compact only summarized sessions** (`watcher.py` + `compact_pending(
+  summarized_only=)`): `manthana watch --compact-summarized` (default on, cheap);
+  `--compact` still does all-pending (pricier). Disabled when no real model.
+- **Cheapest-first Ask** (`insights.ask(source=)`, founder `run_query(source=)`):
+  default includes the cheap summary-derived compactions; a `source` toggle
+  ("full only" / "Claude summaries only") on the CLI, dashboard Ask page, and
+  founder console/API. (One compaction per session → it's a source filter.)
+- **Org release**: summary-based compactions are ordinary compactions →
+  sync/release/redact/k-anon apply; `source` is in `_COMPACTION_KEEP` (kept through
+  redaction) while the summary-derived content is scrubbed on egress.
+- **Proactive Optimize**: `manthana login` proactively runs `headroom init claude`
+  (durable routing) when headroom is installed (`--no-optimize` to skip); the
+  dashboard Optimize page has a one-click "Wire Claude Code through headroom"
+  button. Periodic CLAUDE.md tuning stays an explicit button/CLI (token-spending).
+
+**Tests:** `test_compact_summary.py` (8), `test_watcher.py` (+summarized), insights
+source-filter, optimize setup. **196 tests.** Verified live: 5 real transcripts
+carry summaries (preTokens up to ~1M).
+
+**Deferred:** auto-compacting non-summarized sessions; auto-periodic tune; a
+separate proxy launchd service (headroom's durable init covers persistence).

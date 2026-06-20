@@ -55,10 +55,16 @@ queryable and you can run Claude Code more efficiently:
 ```bash
 manthana insights --since 7d           # token-free: projects, outcomes, est. cost
 manthana ask "what did I work on last week?"   # grounded, cited (uses your model)
+manthana ask "..." --source full       # exclude the cheap Claude-summary digests
 manthana optimize status               # headroom (context compression) status
 manthana optimize setup                # wire Claude Code through headroom
 manthana optimize tune                 # mine your history into CLAUDE.md
 ```
+
+Manthana **reuses Claude Code's own compaction summaries**: heavy sessions Claude
+already summarized compact cheaply (it feeds that summary, not the full transcript),
+`manthana watch` auto-compacts those summarized sessions by default, and Ask
+defaults to the cheapest digest (toggle to full-only).
 
 The same lives in the dashboard (`uv run manthana dashboard`): the **Ask** page
 (insights + grounded Q&A) and the **Optimize** page (headroom setup + savings).
