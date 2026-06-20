@@ -72,8 +72,13 @@ def login(
     server: str = typer.Option(..., help="org server URL, e.g. https://manthana.yourco.com"),
     token: str = typer.Option(..., help="the team token from your admin (manthana-server onboard)"),
     actor: str = typer.Option("", help="your contributor identity, e.g. you@yourco.com"),
+    optimize: bool = typer.Option(True, help="also wire Claude Code through headroom if installed"),
 ) -> None:
-    """One-time: connect this agent to the org server (writes manthana.toml + verifies)."""
+    """One-time: connect this agent to the org server (writes manthana.toml + verifies).
+
+    By default also proactively wires Claude Code through headroom (token reduction)
+    when it's installed — --no-optimize to skip.
+    """
     import httpx
     from manthana.agent.config import load_config, save_config
 
@@ -84,6 +89,15 @@ def login(
         config.actor = actor
     path = save_config(config)
     typer.echo(f"wrote {path}")
+    if optimize:
+        from manthana.agent import optimize as opt
+
+        if opt.available():
+            result = opt.setup()
+            status = result.get("output") or ("wired" if result.get("ok") else "skip")
+            typer.echo(f"headroom: {status}")
+        else:
+            typer.echo(f"optimize: {opt.INSTALL_HINT}")
     try:
         ok = httpx.get(f"{config.server_url}/healthz", timeout=5.0).status_code == 200
     except httpx.HTTPError as exc:

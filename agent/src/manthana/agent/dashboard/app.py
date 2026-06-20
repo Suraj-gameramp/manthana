@@ -266,13 +266,12 @@ def create_app(
         env = " ".join(f"{k}={v}" for k, v in opt.claude_env().items())
         setup = (
             "<div class='bar'><b>headroom installed ✓</b><br>"
-            "One-time durable setup: <code>manthana optimize setup</code><br>"
-            "Or run the proxy and point Claude Code at it:"
-            f"<pre>{_e(proxy)}\n{_e(env)} claude</pre>"
+            "<form method='post' action='/optimize/setup'>"
+            "<button>⚡ Wire Claude Code through headroom</button></form> "
             "<form method='post' action='/optimize/tune'>"
             "<button>⛁ Tune CLAUDE.md from my history</button></form>"
-            "<small>headroom learn — mines past sessions into failure-avoidance "
-            "context</small></div>"
+            "<br><small>or run the proxy manually and point Claude Code at it:</small>"
+            f"<pre>{_e(proxy)}\n{_e(env)} claude</pre></div>"
         )
         s = opt.stats()
         if s.get("data"):
@@ -293,6 +292,20 @@ def create_app(
                 _log.info("optimize tune: %s", "ok" if result.get("ok") else result)
             except Exception:
                 _log.exception("optimize tune failed")
+
+        threading.Thread(target=_run, daemon=True).start()
+        return RedirectResponse(url="/optimize", status_code=303)
+
+    @app.post("/optimize/setup")
+    def optimize_setup() -> RedirectResponse:
+        from manthana.agent import optimize as opt
+
+        def _run() -> None:
+            try:
+                result = opt.setup()
+                _log.info("optimize setup: %s", "ok" if result.get("ok") else result)
+            except Exception:
+                _log.exception("optimize setup failed")
 
         threading.Thread(target=_run, daemon=True).start()
         return RedirectResponse(url="/optimize", status_code=303)

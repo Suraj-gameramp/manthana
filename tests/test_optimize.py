@@ -120,3 +120,14 @@ def test_dashboard_optimize_installed_shows_setup_and_savings(
     body = client.get("/optimize").text
     assert "headroom installed" in body and "999" in body
     assert "Tune CLAUDE.md" in body
+    assert "Wire Claude Code through headroom" in body  # proactive one-click setup
+
+
+def test_dashboard_optimize_setup_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(opt, "available", lambda *a, **k: True)
+    monkeypatch.setattr(
+        opt, "setup", lambda *a, **k: {"available": True, "ok": True, "output": "ok"}
+    )
+    client = TestClient(create_app(Store.open_memory()))
+    resp = client.post("/optimize/setup", follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"] == "/optimize"
