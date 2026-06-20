@@ -5,8 +5,10 @@ across an organization, distills each session into a typed **compaction**, and
 gives founders grounded, citation-backed visibility — while the employee owns
 the local store and the org sees only what is explicitly released.
 
-See the full specification under [`spec/`](spec/) and the realized,
-code-grounded architecture in
+**New to the codebase?** Start with the **[Technical Report](docs/report/)** — a
+diagram-rich tour (overview, architecture, dataflow, sequence diagrams, trust
+model, decisions, roadmap). The full spec is under [`spec/`](spec/) and the
+chronological architecture log in
 [`spec/manthana-architecture.md`](spec/manthana-architecture.md).
 
 ## Status
