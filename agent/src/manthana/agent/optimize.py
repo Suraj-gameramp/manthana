@@ -26,6 +26,8 @@ from typing import Any
 HEADROOM = "headroom"
 INSTALL_HINT = 'headroom not installed — run: pip install "headroom-ai[proxy,mcp]"'
 DEFAULT_PORT = 8787
+_TIMEOUT_S = 180  # bound any headroom call (learn can be slow); never hang the caller
+_MAX_OUT = 5_000_000  # guard json.loads against a runaway output (memory DoS)
 
 # A runner takes argv → (returncode, stdout, stderr); injected in tests.
 Runner = Callable[[list[str]], tuple[int, str, str]]
@@ -33,7 +35,12 @@ Which = Callable[[str], str | None]
 
 
 def _subprocess_runner(argv: list[str]) -> tuple[int, str, str]:
-    proc = subprocess.run(argv, capture_output=True, text=True, check=False)  # noqa: S603
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv is constants + an int port, no shell
+            argv, capture_output=True, text=True, check=False, timeout=_TIMEOUT_S
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "", f"headroom timed out after {_TIMEOUT_S}s"
     return proc.returncode, proc.stdout, proc.stderr
 
 
@@ -100,6 +107,8 @@ def stats(*, runner: Runner = _subprocess_runner, which: Which = shutil.which) -
     code, out, err = runner([HEADROOM, "perf", "--format", "json"])
     if code != 0:
         return {"available": True, "error": (err or out or "perf failed").strip()[:300]}
+    if len(out) > _MAX_OUT:  # don't json.loads a runaway blob
+        return {"available": True, "error": "stats output too large"}
     try:
         return {"available": True, "data": json.loads(out)}
     except json.JSONDecodeError:

@@ -219,10 +219,12 @@ def create_app(
         outcomes = (
             f"<br>outcomes: {_e(s.by_outcome)}" if s.by_outcome else ""
         )
+        cost_note = " (recent 300)" if s.cost_capped else ""
         panel = (
             f"<div class='bar'><b>Your work{(' · last ' + _e(since)) if since else ''}</b>: "
             f"{s.session_count} sessions, {s.compaction_count} compactions · "
-            f"est. API-equivalent cost ~${s.est_cost_usd}<br>projects: {projects}{outcomes}</div>"
+            f"est. API-equivalent cost ~${s.est_cost_usd}{cost_note}"
+            f"<br>projects: {projects}{outcomes}</div>"
         )
         form = (
             "<div class='bar'><form method='get' action='/ask'>"
@@ -277,7 +279,16 @@ def create_app(
     def optimize_tune() -> RedirectResponse:
         from manthana.agent import optimize as opt
 
-        opt.tune()
+        # `headroom learn` can take a while — run it off the request thread so the
+        # dashboard stays responsive, and log the outcome (don't fail silently).
+        def _run() -> None:
+            try:
+                result = opt.tune()
+                _log.info("optimize tune: %s", "ok" if result.get("ok") else result)
+            except Exception:
+                _log.exception("optimize tune failed")
+
+        threading.Thread(target=_run, daemon=True).start()
         return RedirectResponse(url="/optimize", status_code=303)
 
     @app.post("/capture")

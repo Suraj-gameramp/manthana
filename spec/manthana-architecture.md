@@ -1009,3 +1009,16 @@ sessions; `manthana optimize` status/proxy/stats against installed headroom).
 
 **Deferred (next pillars):** Act (agentic actions — the dispatcher already exists)
 and Mine (codebase skill collector); resume-thread stitching.
+
+### Engineer-side review hardening (2026-06-20)
+Adversarial review (14 raw → 10 confirmed; 3 were positive confirmations: no
+egress, intentional prompt-injection, UTC assumption). Fixes (185 tests):
+- `optimize.py`: `_subprocess_runner` now has a 180s **timeout** (TimeoutExpired →
+  code 124) so headroom can't hang the caller; `stats()` bounds output before
+  `json.loads` (`_MAX_OUT`, memory-DoS guard).
+- `insights.py`: cost loop **capped** to the most-recent 300 sessions
+  (`_COST_SCAN_CAP`, `cost_capped` flag surfaced in CLI/dashboard) — removes the
+  N+1 latency cliff on `/ask`.
+- dashboard `/optimize/tune`: runs in a **daemon thread** + logs the result
+  (non-blocking, no silent failure).
+- CLI `optimize`: validates `--port` (1-65535).

@@ -64,6 +64,14 @@ def test_stats_error_on_nonzero() -> None:
     assert opt.stats(runner=runner, which=_present)["error"] == "boom"
 
 
+def test_stats_rejects_oversized_output() -> None:
+    # guard json.loads against a runaway blob (memory DoS)
+    def runner(_argv: list[str]) -> tuple[int, str, str]:
+        return 0, "x" * (opt._MAX_OUT + 1), ""
+
+    assert opt.stats(runner=runner, which=_present)["error"] == "stats output too large"
+
+
 # ── tune + setup (executes the right argv) ──────────────────────────────────
 def test_tune_runs_learn_apply() -> None:
     seen: dict[str, list[str]] = {}

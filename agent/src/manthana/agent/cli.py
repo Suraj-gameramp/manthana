@@ -174,9 +174,10 @@ def insights(since: str = "") -> None:
     from manthana.agent.insights import structural_insights
 
     s = structural_insights(Store.open(), since=since or None)
+    cap = " (recent 300 sessions)" if s.cost_capped else ""
     typer.echo(
         f"sessions={s.session_count} compactions={s.compaction_count} "
-        f"est. API-equivalent cost ~${s.est_cost_usd}"
+        f"est. API-equivalent cost ~${s.est_cost_usd}{cap}"
     )
     projects = ", ".join(f"{p}={n}" for p, n in list(s.by_project.items())[:10]) or "—"
     typer.echo(f"by project: {projects}")
@@ -338,6 +339,8 @@ def optimize(action: str = typer.Argument("status"), port: int = 8787) -> None:
 
     from manthana.agent import optimize as opt
 
+    if not 1 <= port <= 65535:
+        raise typer.BadParameter(f"port must be 1-65535, got {port}")
     if not opt.available():
         typer.echo(opt.INSTALL_HINT)
         raise typer.Exit(code=0 if action == "status" else 1)

@@ -31,6 +31,7 @@ INSUFFICIENT = "No compactions yet — run `manthana compact` first, then ask ag
 _CITE_RE = re.compile(r"\[([^\]]+)\]")
 _SINCE_RE = re.compile(r"^(\d+)\s*([dwh])$")  # 7d / 2w / 12h
 _MAX_SCAN = 5000  # cap store reads
+_COST_SCAN_CAP = 300  # cost reads turns per session; bound it (most-recent first)
 
 
 @dataclass
@@ -42,6 +43,7 @@ class StructuralInsights:
     by_outcome: dict[str, int]  # compactions per outcome
     est_cost_usd: float
     top_friction: list[str]
+    cost_capped: bool = False  # True if cost is over the most-recent _COST_SCAN_CAP only
 
 
 @dataclass
@@ -66,6 +68,7 @@ _NARRATIVE_PROMPT = (
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
+    # Naive datetimes are assumed UTC (the store normalizes timestamps to UTC).
     if value is None:
         return None
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
@@ -146,7 +149,10 @@ def structural_insights(store: Store, *, since: str | None = None) -> Structural
         by_outcome[str(c.outcome)] += 1
         friction += [fp.description for fp in getattr(c, "friction_points", []) if fp.description]
 
-    cost = sum(estimate_cost(store.get_turns(s.id)).usd for s in sessions)
+    # Cost reads turns per session (an extra query each); bound it to the most
+    # recent _COST_SCAN_CAP so the panel stays snappy on a large history.
+    cost_sessions = sessions[:_COST_SCAN_CAP]
+    cost = sum(estimate_cost(store.get_turns(s.id)).usd for s in cost_sessions)
     return StructuralInsights(
         since=since,
         session_count=len(sessions),
@@ -155,6 +161,7 @@ def structural_insights(store: Store, *, since: str | None = None) -> Structural
         by_outcome=dict(by_outcome),
         est_cost_usd=round(cost, 4),
         top_friction=friction[:5],
+        cost_capped=len(sessions) > _COST_SCAN_CAP,
     )
 
 
