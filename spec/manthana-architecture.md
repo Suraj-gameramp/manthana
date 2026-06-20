@@ -970,3 +970,42 @@ layer — LLM-call cost optimization (proxy + Rust compression + vector memory),
 work-capture/intelligence. Call = **reference-only**, no clone-into-repo; at most
 borrow tiny Python primitives (an error-category enum) with attribution later. Not
 a dependency, no Rust forced on the agent. 166 tests green.
+
+## 28. Engineer-side: Ask & Insights + Optimize (headroom)
+
+The engineer's own leverage over their captured work (decision: build Ask +
+Optimize first; integrate headroom directly; defer resume-thread stitching).
+
+**Ask & Insights** (`agent/insights.py`, Apache-2.0 — re-expresses the founder
+pipeline locally; does NOT import the AGPL server):
+- `structural_insights(store, since=)` — **token-free** rollups (sessions by
+  project, outcomes, est. API-equivalent cost, friction, "7d/2w/ISO"); works on
+  raw sessions before any compaction. `since` via `_since_cutoff`; `_within`
+  normalizes naive/aware datetimes.
+- `ask(store, query, provider=)` — NL → light filter → grounded, **cited** answer
+  over the local compactions (`_match_citations` exact-or-unique-prefix; ungrounded
+  flagged; degrades on provider error / no compactions). Purely local (no egress).
+- Dashboard **Ask** page (GET form → read-only, no python-multipart): always-on
+  structural panel + grounded answers. CLI: `manthana insights [--since]`, `manthana ask "<q>"`.
+
+**Optimize** (`agent/optimize.py` + headroom): integrate **headroom 0.26** (the
+context-compression layer) so Claude Code runs with far fewer tokens. Optional
+extra `manthana[optimize]` (= `headroom-ai[proxy,mcp]`); wrapper degrades to an
+install hint when absent. Maps to real headroom CLI: `init claude` (setup),
+`proxy --port` + `ANTHROPIC_BASE_URL` (claude_env), `mcp install`,
+`perf --format json` (stats), `learn --apply` (tune CLAUDE.md). Subprocess via an
+**injectable runner** (hermetic tests); argv from constants + an int port (no
+shell, no injection). Dashboard **Optimize** page + CLI `manthana optimize
+{status|setup|proxy|mcp|stats|tune}`.
+
+**Differentiation:** the market is point tools (analytics / compressors /
+skill-gen / memory MCPs); Manthana folds them into one trust-contract loop — Ask
+reuses the grounded-citation engine; Optimize leans on headroom for raw
+compression while Manthana supplies the real captured history to tune from.
+
+**Tests:** `tests/test_insights.py` (6), `tests/test_optimize.py` (11), dashboard
+Ask render. **184 tests.** Verified live (Ask structural panel over 386 real
+sessions; `manthana optimize` status/proxy/stats against installed headroom).
+
+**Deferred (next pillars):** Act (agentic actions — the dispatcher already exists)
+and Mine (codebase skill collector); resume-thread stitching.

@@ -47,6 +47,24 @@ uv run manthana-schemas-export  # regenerate schemas/json/*.schema.json
 uv run manthana datahome        # show resolved MANTHANA_DATA_HOME + db path
 ```
 
+## For the engineer (your own machine)
+
+After capture (`manthana watch` / the dashboard's Capture button), your work is
+queryable and you can run Claude Code more efficiently:
+
+```bash
+manthana insights --since 7d           # token-free: projects, outcomes, est. cost
+manthana ask "what did I work on last week?"   # grounded, cited (uses your model)
+manthana optimize status               # headroom (context compression) status
+manthana optimize setup                # wire Claude Code through headroom
+manthana optimize tune                 # mine your history into CLAUDE.md
+```
+
+The same lives in the dashboard (`uv run manthana dashboard`): the **Ask** page
+(insights + grounded Q&A) and the **Optimize** page (headroom setup + savings).
+Optimize needs the extra: `uv sync --extra optimize` (or `pip install
+"headroom-ai[proxy,mcp]"`); it degrades to an install hint when absent.
+
 ## Deploying for a team
 
 Full team setup is two short guides:
