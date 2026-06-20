@@ -330,12 +330,20 @@ def service(action: str = typer.Argument("status")) -> None:
         )
         raise typer.Exit(code=1)
 
+    def _launchctl(*args: str) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                ["launchctl", *args], capture_output=True, text=True, check=False
+            )
+        except FileNotFoundError as exc:  # launchctl absent (shouldn't happen on macOS)
+            typer.echo("`launchctl` not found — cannot manage the service")
+            raise typer.Exit(code=1) from exc
+
     if action == "status":
         if not plist_path.exists():
             typer.echo("not installed")
             return
-        listed = subprocess.run(["launchctl", "list"], capture_output=True, text=True, check=False)
-        state = "running" if _SERVICE_LABEL in listed.stdout else "loaded (not running)"
+        state = "running" if _SERVICE_LABEL in _launchctl("list").stdout else "loaded (not running)"
         typer.echo(f"installed at {plist_path} — {state}")
         return
 
@@ -351,8 +359,11 @@ def service(action: str = typer.Argument("status")) -> None:
         (Path.home() / "Library" / "Logs").mkdir(parents=True, exist_ok=True)
         with plist_path.open("wb") as fh:
             plistlib.dump(_watch_plist(manthana_bin, actor), fh)
-        subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True, check=False)
-        subprocess.run(["launchctl", "load", "-w", str(plist_path)], check=False)
+        _launchctl("unload", str(plist_path))  # ignore: not loaded yet on first install
+        loaded = _launchctl("load", "-w", str(plist_path))
+        if loaded.returncode != 0:
+            typer.echo(f"wrote {plist_path} but `launchctl load` failed: {loaded.stderr.strip()}")
+            raise typer.Exit(code=1)
         typer.echo(f"installed + loaded {_SERVICE_LABEL} ({plist_path})")
         typer.echo("capture now runs at login; logs: ~/Library/Logs/manthana-watch.log")
         return
@@ -361,8 +372,8 @@ def service(action: str = typer.Argument("status")) -> None:
         if not plist_path.exists():
             typer.echo("not installed")
             return
-        subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True, check=False)
-        plist_path.unlink()
+        _launchctl("unload", str(plist_path))
+        plist_path.unlink(missing_ok=True)
         typer.echo(f"uninstalled {_SERVICE_LABEL}")
         return
 

@@ -22,6 +22,10 @@ RUN uv sync --all-packages --frozen \
 
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Run as a non-root user (the server needs no write access to the image).
+RUN useradd --create-home --uid 10001 manthana && chown -R manthana:manthana /app
+USER manthana
+
 EXPOSE 8000
 # build_default_app() wires config from MANTHANA_SERVER_* env vars and creates
 # tables on startup (idempotent).

@@ -918,3 +918,29 @@ employee only touches the dashboard.
 - **Verified live** against the dockerized server: `onboard bob@acme.com` → token;
   `manthana login` wrote the toml + connected ✓; `config` masked the token;
   `sync --check` → reachable + token accepted.
+
+### Part 3 — multi-contributor proof + review hardening (2026-06-20)
+
+- **Proof** `tests/test_team_e2e.py`: 4 engineers (distinct JWTs) push released
+  compactions to one org over the real endpoints → org mining clears k-anon and
+  drops names; 3 contributors suppressed; one engineer's 4 sessions suppressed.
+  `scripts/demo_team.sh` does it live (verified: 1 skill mined, real 4-citation
+  founder narrative).
+- **Adversarial review** (37 raw → 22 confirmed). Fixes:
+  - **CRITICAL — actor spoofing / k-anon bypass.** `/v1/compactions` trusted the
+    payload's `actor`, so one engineer with one token could submit compactions
+    under 4 forged actors and fake their way past the floor. The ingest endpoint
+    now **binds `compaction.actor = claims.actor`** (the authenticated token is the
+    source of truth). Regression: `test_forged_actors_in_payload_cannot_fake_k_anon`
+    (4 forged actors via one token → 1 contributor → suppressed); the legit
+    4-token path still clears (verified live).
+  - **Secrets at rest:** `save_config` chmods `manthana.toml` (holds the team JWT)
+    to `0o600`; the local SQLite db is created `0o600` (`store/engine.py`).
+  - **launchd robustness:** `launchctl` calls guard `FileNotFoundError`, the
+    `load` result is checked (no silent failure), uninstall uses `unlink(missing_ok)`.
+  - **Container:** the server image runs as a **non-root** user (uid 10001).
+  - **Confirmed-good (no change):** personal-mode invariant, redaction-on-release,
+    actor-resolution precedence, `sync --check` read-only.
+- **Deferred (noted):** server-side rate-limiting on auto-sync; rejecting dev-default
+  secrets in prod; tighter SyncError text. The critic's ".env is tracked" flag is a
+  false alarm — `.env` is gitignored (verified). **163 tests green.**

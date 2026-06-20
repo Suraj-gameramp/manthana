@@ -104,3 +104,22 @@ def test_one_engineers_many_sessions_do_not_clear_floor() -> None:
     for i in range(4):
         _push(client, "solo@acme.com", f"c{i}")
     assert _mine(client)["proposals"] == []
+
+
+def test_forged_actors_in_payload_cannot_fake_k_anon() -> None:
+    # One engineer (one token) submits compactions whose payload claims 4 DIFFERENT
+    # actors. The server must bind each to the token's identity, so k-anon still
+    # sees a single contributor and suppresses — no spoofing past the floor.
+    client, _ = _make()
+    attacker = issue_team_token(
+        _SECRET, org_id="acme", team_id="platform", actor="mallory@acme.com"
+    )
+    for i in range(4):
+        forged = _payload(f"c{i}", f"victim{i}@acme.com")  # lying about the contributor
+        resp = client.post(
+            "/v1/compactions",
+            json={"compactions": [forged]},
+            headers={"Authorization": f"Bearer {attacker}"},
+        )
+        assert resp.status_code == 200
+    assert _mine(client)["proposals"] == []  # bound to mallory → 1 contributor → suppressed

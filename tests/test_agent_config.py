@@ -5,8 +5,11 @@ SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+import stat
+import sys
 from pathlib import Path
 
+import pytest
 from manthana.agent.cli import _watch_plist
 from manthana.agent.config import Config, load_config, save_config
 
@@ -41,6 +44,14 @@ def test_config_escapes_quotes_in_values(tmp_path: Path) -> None:
     p = tmp_path / "m.toml"
     save_config(Config(actor='weird"name'), p)
     assert load_config(p).actor == 'weird"name'
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file permissions")
+def test_config_written_owner_only(tmp_path: Path) -> None:
+    # The token lives here — it must not be world/group readable.
+    p = tmp_path / "manthana.toml"
+    save_config(Config(server_url="https://s", team_token="secret-jwt"), p)
+    assert stat.S_IMODE(p.stat().st_mode) == 0o600
 
 
 def test_watch_plist_includes_actor_env() -> None:

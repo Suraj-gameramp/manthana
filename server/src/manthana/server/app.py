@@ -132,6 +132,11 @@ def create_app(
                 raise HTTPException(
                     status_code=422, detail=f"compaction {compaction.id} is not released"
                 )
+            # The contributor identity is the AUTHENTICATED token, never the (untrusted)
+            # payload — otherwise one engineer could submit compactions under several
+            # forged actors and fake their way past the k-anonymity floor. Binding to
+            # claims.actor makes the count reflect real distinct people.
+            compaction.actor = claims.actor
             compactions.append(compaction)
         for compaction in compactions:
             store.ingest_compaction(compaction, org_id=claims.org_id, team_id=claims.team_id)

@@ -62,8 +62,17 @@ def create_db_engine(db_path: str | Path) -> Engine:
         # check_same_thread=False so a pooled connection can be used by the
         # dashboard's background compaction thread (WAL + busy_timeout make the
         # single-user read/write overlap safe).
+        path = Path(path_str).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # The local store is the employee's own data — keep the db file owner-only
+        # (best-effort; no-op where POSIX perms don't apply).
+        path.touch(exist_ok=True)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
         engine = create_engine(
-            f"sqlite:///{Path(path_str).resolve()}",
+            f"sqlite:///{path}",
             connect_args={"check_same_thread": False},
         )
     event.listen(engine, "connect", _configure_connection)

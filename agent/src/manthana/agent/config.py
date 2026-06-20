@@ -81,6 +81,12 @@ def save_config(config: Config, path: Path | None = None) -> Path:
     if config.actor:
         lines += ["", "[identity]", f"actor = {_toml_str(config.actor)}"]
     target.write_text("\n".join(lines) + "\n")
+    # Holds the team JWT — keep it owner-only (best-effort; no-op on filesystems
+    # without POSIX perms, e.g. some Windows setups).
+    try:
+        target.chmod(0o600)
+    except OSError:
+        pass
     return target
 
 
