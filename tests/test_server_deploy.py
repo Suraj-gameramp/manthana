@@ -49,6 +49,8 @@ def test_config_reads_s3_endpoint_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MANTHANA_SERVER_S3_ENDPOINT_URL", "http://minio:9000")
     monkeypatch.setenv("MANTHANA_SERVER_S3_ACCESS_KEY", "ak")
     monkeypatch.setenv("MANTHANA_SERVER_S3_SECRET_KEY", "sk")
+    monkeypatch.setenv("MANTHANA_SERVER_ADMIN_TOKEN", "adm")  # non-default (rejection guard)
+    monkeypatch.setenv("MANTHANA_SERVER_JWT_SECRET", "x" * 40)
     cfg = ServerConfig.from_env()
     assert cfg.object_store == "s3"
     assert cfg.s3_endpoint_url == "http://minio:9000"

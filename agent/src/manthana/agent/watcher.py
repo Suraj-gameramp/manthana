@@ -59,6 +59,8 @@ def watch(
     ingest: Callable[..., IngestResult] = ingest_file,
     compact_fn: Callable[..., list[Any]] = compact_pending,
     sync_fn: Callable[[Store], int] | None = None,
+    sync_min_interval: float = 60.0,
+    clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] | None = None,
 ) -> dict[str, float]:
@@ -73,6 +75,7 @@ def watch(
     collector = collector or ClaudeCodeCollector()
     emit = log or _log.info
     seen: dict[str, float] = {}
+    last_sync: float | None = None
     cycle = 0
     while iterations is None or cycle < iterations:
         current = _scan(collector)
@@ -97,16 +100,18 @@ def watch(
                     emit(f"compacted {len(comps)} pending sessions")
                 except Exception:  # noqa: BLE001 - compaction failure must not kill the loop
                     _log.exception("watch: compaction failed")
-        # Auto-sync released compactions every cycle (releases happen out-of-band in
-        # the dashboard, so this isn't gated on `changed`). Cheap when nothing is
-        # fresh — it only POSTs newly released, redacted, non-personal compactions.
-        if sync_fn is not None:
+        # Auto-sync released compactions (releases happen out-of-band in the
+        # dashboard, so this isn't gated on `changed`), but rate-limited to at most
+        # once per `sync_min_interval` so a short poll interval doesn't hammer the
+        # server. It only POSTs newly released, redacted, non-personal compactions.
+        if sync_fn is not None and (last_sync is None or clock() - last_sync >= sync_min_interval):
             try:
                 pushed = sync_fn(store)
                 if pushed:
                     emit(f"synced {pushed} released compactions")
             except Exception:  # noqa: BLE001 - a sync failure must not kill the loop
                 _log.exception("watch: auto-sync failed")
+            last_sync = clock()  # set even on failure, so a failing sync doesn't retry-spam
         # Forget files that disappeared so a recreated path re-ingests.
         seen = {path: mtime for path, mtime in seen.items() if path in current}
         cycle += 1

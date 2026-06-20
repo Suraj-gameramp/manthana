@@ -260,10 +260,36 @@ def test_auto_sync_runs_each_cycle(tmp_path: Path) -> None:
         collector=_collector(proj),
         ingest=ingest,  # type: ignore[arg-type]
         sync_fn=fake_sync,  # type: ignore[arg-type]
+        sync_min_interval=0.0,  # no throttle: sync every cycle
         sleep=_noop_sleep,
         iterations=2,
     )
     assert synced == [1, 1]  # called on both cycles (cycle 2 had no file changes)
+
+
+def test_auto_sync_is_rate_limited(tmp_path: Path) -> None:
+    # With a min interval and a clock that doesn't advance, sync runs once (first
+    # cycle) and is throttled thereafter — no hammering the server every poll.
+    proj = tmp_path / "projects"
+    _touch(proj / "p1" / "s1.jsonl")
+    _calls, ingest = _recorder()
+    synced: list[int] = []
+
+    def fake_sync(_store: object) -> int:
+        synced.append(1)
+        return 0
+
+    watch(
+        Store.open_memory(),
+        collector=_collector(proj),
+        ingest=ingest,  # type: ignore[arg-type]
+        sync_fn=fake_sync,  # type: ignore[arg-type]
+        sync_min_interval=60.0,
+        clock=lambda: 100.0,  # frozen clock → never past the interval
+        sleep=_noop_sleep,
+        iterations=4,
+    )
+    assert synced == [1]  # only the first cycle synced
 
 
 def test_auto_sync_error_does_not_kill_loop(tmp_path: Path) -> None:

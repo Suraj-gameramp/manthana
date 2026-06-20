@@ -13,12 +13,17 @@ from dataclasses import dataclass
 
 K_ANON_FLOOR_DEFAULT = 4
 
+# Insecure placeholders so `ServerConfig()` is constructible in a REPL/dev, but
+# rejected at startup (see __post_init__) — a real deploy must override them.
+_DEV_JWT_SECRET = "dev-insecure-jwt-secret-change-me-in-production"  # noqa: S105 - placeholder
+_DEV_ADMIN_TOKEN = "dev-admin-token"  # noqa: S105 - placeholder
+
 
 @dataclass
 class ServerConfig:
     db_url: str = "sqlite:///./manthana-server.db"
-    jwt_secret: str = "dev-insecure-jwt-secret-change-me-in-production"  # noqa: S105 - dev only
-    admin_token: str = "dev-admin-token"  # noqa: S105 - dev default; override in prod
+    jwt_secret: str = _DEV_JWT_SECRET
+    admin_token: str = _DEV_ADMIN_TOKEN
     k_anon_floor: int = K_ANON_FLOOR_DEFAULT
     object_store: str = "memory"  # "memory" | "s3"
     s3_bucket: str | None = None
@@ -39,6 +44,14 @@ class ServerConfig:
             raise ValueError("admin_token must not be empty (set MANTHANA_SERVER_ADMIN_TOKEN)")
         if not self.jwt_secret:
             raise ValueError("jwt_secret must not be empty (set MANTHANA_SERVER_JWT_SECRET)")
+        # Fail closed on the shipped placeholders so a deploy can't silently run
+        # with publicly-known secrets (anyone could mint admin/team tokens).
+        if self.admin_token == _DEV_ADMIN_TOKEN or self.jwt_secret == _DEV_JWT_SECRET:
+            raise ValueError(
+                "refusing to run with the insecure dev defaults — set "
+                "MANTHANA_SERVER_ADMIN_TOKEN and MANTHANA_SERVER_JWT_SECRET "
+                "(copy .env.example to .env)"
+            )
         if self.llm_provider not in ("mock", "anthropic"):
             raise ValueError(
                 f"llm_provider must be 'mock' or 'anthropic', got {self.llm_provider!r}"

@@ -111,6 +111,17 @@ def test_invalid_llm_provider_rejected() -> None:
         _cfg(llm_provider="gpt")
 
 
+def test_config_rejects_dev_default_secrets() -> None:
+    from manthana.server.config import _DEV_ADMIN_TOKEN, _DEV_JWT_SECRET
+
+    with pytest.raises(ValueError):
+        ServerConfig()  # both shipped placeholders
+    with pytest.raises(ValueError):
+        ServerConfig(jwt_secret="x" * 40, admin_token=_DEV_ADMIN_TOKEN)
+    with pytest.raises(ValueError):
+        ServerConfig(jwt_secret=_DEV_JWT_SECRET, admin_token="adm")
+
+
 def test_config_rejects_out_of_range_numeric_bounds() -> None:
     with pytest.raises(ValueError):
         _cfg(llm_max_tokens=0)  # empty narrative
@@ -190,6 +201,24 @@ def test_citation_matches_comma_grouped_bracket() -> None:
     result = run_query(store, config, org_id="o1", query="x", provider=provider)
     assert result.insufficient_data is False
     assert set(result.citations) == {a, b}
+
+
+def test_per_filter_k_anon_excludes_subfloor_outcome_from_narrative() -> None:
+    # A project clears the floor (4 contributors on "success"), but one lone
+    # "abandoned" session must NOT be citable in the narrative even though its
+    # project survived — its outcome cohort is sub-floor.
+    config = _cfg(k_anon_floor=4)
+    store = ServerStore.open("sqlite://")
+    store.create_org("o1", "Acme")
+    for i in range(4):
+        store.ingest_compaction(_comp(f"ok{i}", f"e{i}@x.com"), org_id="o1", team_id="t1")
+    lone = _comp("aband0", "solo@x.com")
+    lone.outcome = Outcome.abandoned  # single-contributor outcome cohort
+    store.ingest_compaction(lone, org_id="o1", team_id="t1")
+    # provider cites the lone abandoned compaction; grounding must reject it
+    provider = MockProvider("The team mostly succeeded but one effort was abandoned [aband0].")
+    result = run_query(store, config, org_id="o1", query="how's it going?", provider=provider)
+    assert "aband0" not in result.citations  # sub-floor outcome cohort never cited
 
 
 def test_ambiguous_prefix_citation_does_not_ground() -> None:

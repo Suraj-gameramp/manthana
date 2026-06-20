@@ -118,7 +118,7 @@ def test_until_date_includes_whole_boundary_day() -> None:
 
 # ── Finding 6: per-bucket k-anonymity ──────────────────────────────────────
 def test_per_bucket_k_anon_suppresses_single_contributor_project() -> None:
-    config = Cfg(k_anon_floor=4)
+    config = Cfg(k_anon_floor=4, jwt_secret="x" * 40, admin_token="adm")
     store = _store()
     for i in range(4):  # 4 contributors on "shared"
         store.ingest_compaction(

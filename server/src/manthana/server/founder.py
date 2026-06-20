@@ -146,10 +146,11 @@ def parse_filter(query: str, provider: LLMProvider) -> FounderFilter:
     return spec
 
 
-def _rollup(compactions: list[Any], floor: int) -> tuple[Rollup, set[str]]:
+def _rollup(compactions: list[Any], floor: int) -> tuple[Rollup, set[str], set[str]]:
     """Build the rollup, suppressing any project/outcome sub-bucket backed by
-    fewer than ``floor`` distinct contributors. Returns the rollup and the set of
-    project buckets that survived (used to gate the narrative)."""
+    fewer than ``floor`` distinct contributors. Returns the rollup plus the
+    project AND outcome buckets that survived (both gate the narrative, so it can
+    never cite a cohort that's sub-floor on either dimension)."""
     proj_count: dict[str, int] = defaultdict(int)
     proj_contrib: dict[str, set[str]] = defaultdict(set)
     out_count: dict[str, int] = defaultdict(int)
@@ -173,7 +174,7 @@ def _rollup(compactions: list[Any], floor: int) -> tuple[Rollup, set[str]]:
         by_outcome=by_outcome,
         total_cost_usd=round(total, 6),
     )
-    return rollup, set(by_project)
+    return rollup, set(by_project), set(by_outcome)
 
 
 def run_query(
@@ -195,7 +196,7 @@ def run_query(
         since=spec.since,
         until=spec.until,
     )
-    rollup, kept_projects = _rollup(compactions, config.k_anon_floor)
+    rollup, kept_projects, kept_outcomes = _rollup(compactions, config.k_anon_floor)
 
     # Global k-anonymity floor.
     if rollup.distinct_contributors < config.k_anon_floor:
@@ -203,9 +204,13 @@ def run_query(
             filter=spec, rollup=None, narrative=INSUFFICIENT, citations=[], insufficient_data=True
         )
 
-    # Narrative only sees compactions whose project survived k-anon (so it cannot
-    # cite a single-contributor cohort).
-    visible = [c for c in compactions if c.project in kept_projects]
+    # Per-filter k-anon: the narrative only sees compactions whose project AND
+    # outcome buckets both survived the floor, so it can never cite a cohort that
+    # is sub-floor on either dimension (e.g. a lone "abandoned" session whose
+    # project happened to clear).
+    visible = [
+        c for c in compactions if c.project in kept_projects and str(c.outcome) in kept_outcomes
+    ]
     brief = [
         {"id": c.id, "project": c.project, "intent": c.task_intent, "outcome": str(c.outcome)}
         for c in visible
