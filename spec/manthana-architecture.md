@@ -861,3 +861,31 @@ dataset/file names, abstract output, invariant procedure), action-oriented name,
 abstract trigger patterns, failure-handling body; `fallback_draft` says "or
 similar work". 141 tests green. Re-verification (re-compact/re-mine) deferred
 until fresh sessions accrue.
+
+## 26. Phase B — team-deployable
+
+### Part 1 — deployable server (2026-06-20)
+
+One-command self-host: `docker compose up` builds the server image and runs
+server + Postgres + MinIO + bucket creation.
+
+- **`server/Dockerfile`** (python:3.12-slim, `uv sync --all-packages --frozen` +
+  the `[postgres,s3,llm]` extras; entry `uvicorn …:build_default_app --factory`).
+  Build context = repo root (workspace path-deps); `.dockerignore` keeps it lean.
+- **`docker-compose.yml`**: added a `server` service (in-cluster wiring overrides
+  `.env`: `postgres:5432`, S3→`minio:9000`) gated on `postgres` healthy +
+  `minio-setup` (an `mc` one-shot that creates the `manthana-raw` bucket) completed;
+  `/readyz` healthcheck.
+- **S3/MinIO fix**: `S3ObjectStore`/`make_object_store` honor
+  `MANTHANA_SERVER_S3_ENDPOINT_URL` (+ access/secret keys); new `ServerConfig`
+  fields. (Previously hardcoded to AWS → MinIO/raw-release broke.)
+- **`GET /readyz`**: DB `SELECT 1` via `ServerStore.ping()` → 200/503 (vs
+  `/healthz` liveness).
+- **`manthana-server onboard <org> <name> <team> <name> <actor>`**: idempotent
+  create org+team + mint token in one step.
+- **`docs/deploy.md`**: bring-up, secrets, TLS-proxy note, per-engineer provisioning.
+- **Tests** `tests/test_server_deploy.py` (7): readyz/healthz, ping, S3 env config,
+  S3 roundtrip via injected client, make_object_store. **148 tests.**
+- **Verified live:** `docker compose up` → server healthy; `/healthz`+`/readyz`+
+  `/ui/login` 200; `onboard acme …` minted a token; console shows the persisted
+  `actioneer` org + new `acme` (dockerized server reads the real Postgres).

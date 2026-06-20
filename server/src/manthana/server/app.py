@@ -18,7 +18,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import hmac
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from manthana.schemas import CompactionAdapter
 from manthana.skills import mine_org
 from pydantic import BaseModel, ValidationError
@@ -90,6 +90,14 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readyz(response: Response) -> dict[str, str]:
+        # Readiness (vs healthz liveness): DB reachable? Used by the compose/k8s probe.
+        if store.ping():
+            return {"status": "ready"}
+        response.status_code = 503
+        return {"status": "not ready"}
 
     @app.post("/v1/admin/orgs")
     def create_org(body: CreateOrg, _: Annotated[None, Depends(require_admin)]) -> dict[str, str]:

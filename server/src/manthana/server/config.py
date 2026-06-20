@@ -22,6 +22,9 @@ class ServerConfig:
     k_anon_floor: int = K_ANON_FLOOR_DEFAULT
     object_store: str = "memory"  # "memory" | "s3"
     s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None  # set for MinIO / non-AWS S3
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
     # Founder-narrative provider (arch §9): dev/tests use the deterministic mock;
     # the org sets llm_provider="anthropic" + ANTHROPIC_API_KEY for a real model.
     llm_provider: str = "mock"  # "mock" | "anthropic"
@@ -59,6 +62,9 @@ class ServerConfig:
             k_anon_floor=int(env("MANTHANA_SERVER_K_ANON", str(cls.k_anon_floor))),
             object_store=env("MANTHANA_SERVER_OBJECT_STORE", cls.object_store),
             s3_bucket=env("MANTHANA_SERVER_S3_BUCKET", None),
+            s3_endpoint_url=env("MANTHANA_SERVER_S3_ENDPOINT_URL", None),
+            s3_access_key=env("MANTHANA_SERVER_S3_ACCESS_KEY", None),
+            s3_secret_key=env("MANTHANA_SERVER_S3_SECRET_KEY", None),
             llm_provider=env("MANTHANA_SERVER_LLM", cls.llm_provider),
             llm_model=env("MANTHANA_SERVER_LLM_MODEL", cls.llm_model),
             llm_max_tokens=int(env("MANTHANA_SERVER_LLM_MAX_TOKENS", str(cls.llm_max_tokens))),

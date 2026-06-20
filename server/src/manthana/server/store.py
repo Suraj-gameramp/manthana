@@ -20,6 +20,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from manthana.schemas import BaseCompaction, CompactionAdapter
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session as DBSession
 from sqlmodel import col, select
@@ -87,6 +88,15 @@ class ServerStore:
         engine = create_db_engine(db_url)
         init_db(engine)
         return cls(engine)
+
+    def ping(self) -> bool:
+        """Lightweight DB connectivity check for the /readyz probe."""
+        try:
+            with self._engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return True
+        except Exception:  # noqa: BLE001 - any DB error means not-ready
+            return False
 
     # ── tenancy ──────────────────────────────────────────────────────────
     def create_org(self, org_id: str, name: str) -> None:

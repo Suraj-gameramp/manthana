@@ -1,0 +1,17 @@
+# Keep the build context small and avoid copying host-specific state into the image.
+.venv/
+**/.venv/
+.git/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.pyright/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+.claude/
+.DS_Store

@@ -47,6 +47,20 @@ def token(org_id: str, team_id: str, actor: str) -> None:
     typer.echo(issue_team_token(config.jwt_secret, org_id=org_id, team_id=team_id, actor=actor))
 
 
+@app.command()
+def onboard(org_id: str, org_name: str, team_id: str, team_name: str, actor: str) -> None:
+    """Provision one engineer in a single step: ensure the org + team exist
+    (idempotent) and mint their agent token. Hand the printed token to the
+    employee's `manthana login`."""
+    config = ServerConfig.from_env()
+    store = ServerStore.open(config.db_url)
+    store.create_org(org_id, org_name)
+    store.create_team(team_id, org_id, team_name)
+    tok = issue_team_token(config.jwt_secret, org_id=org_id, team_id=team_id, actor=actor)
+    typer.echo(f"provisioned org={org_id} team={team_id} actor={actor}")
+    typer.echo(tok)
+
+
 def main() -> None:
     app()
 
